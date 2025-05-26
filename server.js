@@ -462,4 +462,13 @@ process.on('uncaughtException', (err) => {
   shutdown('uncaughtException');
 });
 
+// Adicione a rota raiz antes das outras rotas
+app.get('/', (req, res) => {
+    res.json({
+        message: 'SortTimes API',
+        status: 'online',
+        version: '1.0.0'
+    });
+});
+
 module.exports = app;

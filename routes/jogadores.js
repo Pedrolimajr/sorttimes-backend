@@ -190,42 +190,6 @@ router.put('/:id', validateObjectId, upload.single('foto'), async (req, res) => 
   }
 });
 
-// Rota PUT - Atualizar status de pagamento mensal
-router.put('/:id/pagamentos/:mes', async (req, res) => {
-  try {
-    const { id, mes } = req.params;
-    const { pago, valor, dataPagamento } = req.body;
-
-    const jogador = await Jogador.findById(id);
-    if (!jogador) {
-      return res.status(404).json({ message: 'Jogador não encontrado' });
-    }
-
-    // Garante que o array de pagamentos existe
-    if (!jogador.pagamentos) {
-      jogador.pagamentos = Array(12).fill(false);
-    }
-
-    // Atualiza o pagamento específico
-    jogador.pagamentos[mes] = pago;
-
-    // Atualiza o status financeiro
-    const mesAtual = new Date().getMonth();
-    const mesesDevendo = jogador.pagamentos
-      .slice(0, mesAtual + 1)
-      .filter(p => !p).length;
-
-    jogador.statusFinanceiro = mesesDevendo === 0 ? 'Adimplente' : 'Inadimplente';
-
-    await jogador.save();
-
-    res.json(jogador);
-  } catch (error) {
-    console.error('Erro ao atualizar pagamento:', error);
-    res.status(500).json({ message: 'Erro ao atualizar pagamento' });
-  }
-});
-
 // Rota PATCH - Atualizar status financeiro
 router.patch('/:id/status', validateObjectId, async (req, res) => {
   try {

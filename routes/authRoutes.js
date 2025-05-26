@@ -9,6 +9,9 @@ const User = require('../models/User');
 // Rota de cadastro
 router.post('/cadastro', async (req, res) => {
   try {
+    // Adicione logs para debug
+    console.log('Requisição de cadastro recebida:', req.body);
+
     const { nome, email, senha } = req.body;
 
     // Verifica se usuário já existe
@@ -49,7 +52,7 @@ router.post('/cadastro', async (req, res) => {
 
   } catch (error) {
     console.error('Erro no cadastro:', error);
-    res.status(500).json({ message: 'Erro ao cadastrar usuário' });
+    res.status(500).json({ error: error.message });
   }
 });
 

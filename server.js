@@ -64,21 +64,10 @@ app.use(cors({
     'http://localhost:5173',
     'https://sorttimes-frontend.vercel.app'
   ],
-  credentials: true
-}));
-
-const corsOptions = {
-  origin: [
-    'http://localhost:5173', 
-    'http://127.0.0.1:5173',
-    process.env.FRONTEND_URL
-  ].filter(Boolean),
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   credentials: true,
-  optionsSuccessStatus: 200
-};
-app.use(cors(corsOptions));
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
 
 // Adicione após as configurações do CORS
 app.use((req, res, next) => {

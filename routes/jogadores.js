@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Jogador = require('../models/Jogador');
+const Transacao = require('../models/Transacao');
 const multer = require('multer');
 const { v2: cloudinary } = require('cloudinary');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
@@ -388,6 +389,84 @@ router.post('/sortear-times', async (req, res) => {
 
   } catch (error) {
     handleError(res, error, 'Erro ao sortear times');
+  }
+});
+
+// Rota de pagamentos
+router.post('/:jogadorId/pagamentos', async (req, res) => {
+  try {
+    const { jogadorId } = req.params;
+    const { mes, pago, valor, dataPagamento } = req.body;
+    
+    console.log('Dados recebidos:', { jogadorId, mes, pago, valor, dataPagamento });
+    
+    const jogador = await Jogador.findById(jogadorId);
+    if (!jogador) {
+      console.log('Jogador não encontrado:', jogadorId);
+      return res.status(404).json({ success: false, message: 'Jogador não encontrado' });
+    }
+
+    // Inicializa pagamentos se necessário
+    if (!jogador.pagamentos) {
+      jogador.pagamentos = Array(12).fill(false);
+    }
+
+    // Atualiza o pagamento
+    jogador.pagamentos[mes] = pago;
+
+    // Atualiza status financeiro
+    const mesAtual = new Date().getMonth();
+    const statusFinanceiro = jogador.pagamentos
+      .slice(0, mesAtual + 1)
+      .every(p => p) ? 'Adimplente' : 'Inadimplente';
+    
+    jogador.statusFinanceiro = statusFinanceiro;
+
+    await jogador.save();
+    console.log('Jogador atualizado:', jogador);
+
+    // Registra transação se for pagamento
+    if (pago) {
+      const transacao = new Transacao({
+        jogadorId,
+        jogadorNome: jogador.nome,
+        valor,
+        tipo: 'receita',
+        categoria: 'mensalidade',
+        descricao: `Mensalidade - ${jogador.nome} (${mes + 1}/${new Date().getFullYear()})`,
+        data: dataPagamento || new Date(),
+        mes
+      });
+
+      await transacao.save();
+      console.log('Transação registrada:', transacao);
+    }
+
+    // Emite evento via Socket.IO
+    req.app.get('io').emit('pagamentoAtualizado', {
+      jogadorId,
+      mes,
+      pago,
+      statusFinanceiro
+    });
+
+    res.json({ 
+      success: true, 
+      message: 'Pagamento atualizado com sucesso',
+      jogador: {
+        _id: jogador._id,
+        nome: jogador.nome,
+        pagamentos: jogador.pagamentos,
+        statusFinanceiro: jogador.statusFinanceiro
+      }
+    });
+
+  } catch (error) {
+    console.error('Erro ao atualizar pagamento:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || 'Erro ao atualizar pagamento' 
+    });
   }
 });
 

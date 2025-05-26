@@ -60,7 +60,10 @@ app.use(hpp());
 
 // ==================== CONFIGURAÇÃO DO CORS ====================
 app.use(cors({
-  origin: process.env.FRONTEND_URL,
+  origin: [
+    'http://localhost:5173',
+    'https://sorttimes-frontend.vercel.app'
+  ],
   credentials: true
 }));
 

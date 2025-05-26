@@ -466,8 +466,7 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
     console.error('Erro ao atualizar pagamento:', error);
     res.status(500).json({
       success: false,
-      message: 'Erro ao atualizar pagamento',
-      error: error.message
+      message: error.message
     });
   }
 });

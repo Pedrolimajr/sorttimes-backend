@@ -136,6 +136,16 @@ app.use('/api/financeiro', (req, res, next) => {
   console.log(`💰 Rota /api/financeiro acessada: ${req.method} ${req.originalUrl}`);
   next();
 });
+
+// ADICIONE A ROTA RAIZ AQUI - ANTES DAS OUTRAS ROTAS
+app.get('/', (req, res) => {
+    res.json({
+        message: 'SortTimes API',
+        status: 'online',
+        version: '1.0.0'
+    });
+});
+
 // Carregar rotas
 app.use('/api/jogadores', jogadorRoutes);
 app.use('/api/sorteio-times', sorteioTimesRoutes);
@@ -460,15 +470,6 @@ process.on('unhandledRejection', (reason, promise) => {
 process.on('uncaughtException', (err) => {
   console.error('💥 Exceção não capturada:', err);
   shutdown('uncaughtException');
-});
-
-// Adicione a rota raiz antes das outras rotas
-app.get('/', (req, res) => {
-    res.json({
-        message: 'SortTimes API',
-        status: 'online',
-        version: '1.0.0'
-    });
 });
 
 module.exports = app;

@@ -61,13 +61,40 @@ app.use(hpp());
 // ==================== CONFIGURAÇÃO DO CORS ====================
 app.use(cors({
   origin: [
-    'https://sorttimes-frontend.vercel.app', 
-    'http://localhost:5173'  // Para desenvolvimento local
+    'https://sorttimes-frontend.vercel.app',
+    'http://localhost:5173'
   ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   credentials: true,
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization',
+    'X-Requested-With',
+    'Accept',
+    'Origin'
+  ],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
+
+// Middleware para log de requisições
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', 'https://sorttimes-frontend.vercel.app');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header(
+    'Access-Control-Allow-Headers',
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+  );
+  
+  if (req.method === 'OPTIONS') {
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH');
+    return res.status(200).json({});
+  }
+  
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
 
 // Adicione após as configurações do CORS
 app.use((req, res, next) => {

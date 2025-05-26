@@ -356,7 +356,7 @@ router.post('/sortear-times', async (req, res) => {
   }
 });
 
-// Rota para pagamentos (POST ao invés de PUT)
+// Atualize a rota de pagamentos
 router.post('/:jogadorId/pagamentos', async (req, res) => {
   try {
     const { jogadorId } = req.params;
@@ -364,6 +364,7 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
     
     console.log('Dados recebidos:', { jogadorId, mes, pago, valor, dataPagamento });
 
+    // Busca o jogador
     const jogador = await Jogador.findById(jogadorId);
     if (!jogador) {
       return res.status(404).json({ 
@@ -378,39 +379,54 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
     }
     
     jogador.pagamentos[mes] = pago;
-    
-    // Atualiza status financeiro
-    const mesAtual = new Date().getMonth();
-    jogador.statusFinanceiro = jogador.pagamentos
-      .slice(0, mesAtual + 1)
-      .every(p => p) ? 'Adimplente' : 'Inadimplente';
-
     await jogador.save();
 
-    // Registra a transação se for um pagamento
+    // Registra a transação
     if (pago) {
       const transacao = new Transacao({
         jogadorId,
         jogadorNome: jogador.nome,
-        valor,
+        valor: valor || 100, // Valor padrão caso não seja informado
         tipo: 'receita',
         categoria: 'mensalidade',
         descricao: `Mensalidade - ${jogador.nome} (${mes + 1}/${new Date().getFullYear()})`,
-        data: dataPagamento || new Date()
+        data: dataPagamento || new Date(),
+        status: 'confirmado'
       });
 
       await transacao.save();
-    }
+      
+      // Recalcula estatísticas financeiras
+      const estatisticas = await Transacao.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalReceitas: {
+              $sum: { $cond: [{ $eq: ['$tipo', 'receita'] }, '$valor', 0] }
+            },
+            totalDespesas: {
+              $sum: { $cond: [{ $eq: ['$tipo', 'despesa'] }, '$valor', 0] }
+            }
+          }
+        }
+      ]);
 
-    // Emite evento via Socket.IO
-    const io = req.app.get('io');
-    if (io) {
-      io.emit('pagamentoAtualizado', {
-        jogadorId,
-        mes,
-        pago,
-        statusFinanceiro: jogador.statusFinanceiro
-      });
+      // Emite eventos via Socket.IO
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('pagamentoAtualizado', {
+          jogadorId,
+          mes,
+          pago,
+          statusFinanceiro: jogador.statusFinanceiro
+        });
+        
+        io.emit('atualizacaoFinanceira', {
+          totalReceitas: estatisticas[0]?.totalReceitas || 0,
+          totalDespesas: estatisticas[0]?.totalDespesas || 0,
+          saldo: (estatisticas[0]?.totalReceitas || 0) - (estatisticas[0]?.totalDespesas || 0)
+        });
+      }
     }
 
     res.json({
@@ -422,7 +438,8 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
           nome: jogador.nome,
           pagamentos: jogador.pagamentos,
           statusFinanceiro: jogador.statusFinanceiro
-        }
+        },
+        transacao: pago ? transacao : null
       }
     });
 

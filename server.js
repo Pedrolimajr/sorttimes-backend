@@ -61,12 +61,12 @@ app.use(hpp());
 // ==================== CONFIGURAÇÃO DO CORS ====================
 app.use(cors({
   origin: [
-    'http://localhost:5173',
-    'https://sorttimes-frontend.vercel.app'
+    'https://sorttimes-frontend.vercel.app', 
+    'http://localhost:5173'  // Para desenvolvimento local
   ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 // Adicione após as configurações do CORS
@@ -465,3 +465,82 @@ process.on('uncaughtException', (err) => {
 });
 
 module.exports = app;
+
+// Rota de pagamentos - Adicione antes das rotas principais
+app.post('/api/jogadores/:jogadorId/pagamentos', async (req, res) => {
+  try {
+    const { jogadorId } = req.params;
+    const { mes, pago, valor, dataPagamento } = req.body;
+    
+    // Busca o jogador
+    const jogador = await Jogador.findById(jogadorId);
+    if (!jogador) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Jogador não encontrado' 
+      });
+    }
+
+    // Inicializa o array de pagamentos se não existir
+    if (!jogador.pagamentos) {
+      jogador.pagamentos = Array(12).fill(false);
+    }
+
+    // Atualiza o pagamento
+    jogador.pagamentos[mes] = pago;
+
+    // Atualiza o status financeiro
+    const pagamentosAtuais = jogador.pagamentos;
+    const mesAtual = new Date().getMonth();
+    const statusFinanceiro = pagamentosAtuais
+      .slice(0, mesAtual + 1)
+      .every(p => p) ? 'Adimplente' : 'Inadimplente';
+    
+    jogador.statusFinanceiro = statusFinanceiro;
+
+    // Salva as alterações
+    await jogador.save();
+
+    // Se for um novo pagamento, registra a transação
+    if (pago) {
+      const transacao = new Transacao({
+        jogadorId,
+        jogadorNome: jogador.nome,
+        valor,
+        tipo: 'receita',
+        categoria: 'mensalidade',
+        descricao: `Mensalidade - ${jogador.nome} (${mes + 1}/${new Date().getFullYear()})`,
+        data: dataPagamento || new Date(),
+        mes
+      });
+
+      await transacao.save();
+    }
+
+    // Emite evento via Socket.IO
+    io.emit('pagamentoAtualizado', {
+      jogadorId,
+      mes,
+      pago,
+      statusFinanceiro
+    });
+
+    res.json({ 
+      success: true, 
+      message: 'Pagamento atualizado com sucesso',
+      jogador: {
+        _id: jogador._id,
+        nome: jogador.nome,
+        pagamentos: jogador.pagamentos,
+        statusFinanceiro: jogador.statusFinanceiro
+      }
+    });
+    
+  } catch (error) {
+    console.error('Erro ao atualizar pagamento:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || 'Erro ao atualizar pagamento' 
+    });
+  }
+});

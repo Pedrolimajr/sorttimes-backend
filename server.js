@@ -471,4 +471,8 @@ process.on('uncaughtException', (err) => {
   shutdown('uncaughtException');
 });
 
+// Registro das rotas
+app.use('/jogadores', require('./routes/jogadores'));
+app.use('/financeiro', require('./routes/financeiro'));
+
 module.exports = app;

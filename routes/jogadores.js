@@ -356,14 +356,14 @@ router.post('/sortear-times', async (req, res) => {
   }
 });
 
-// Atualize a rota de pagamentos
+// Verifique se a rota está registrada assim:
 router.post('/:jogadorId/pagamentos', async (req, res) => {
   try {
     const { jogadorId } = req.params;
     const { mes, pago, valor, dataPagamento } = req.body;
     
-    console.log('Dados recebidos:', { jogadorId, mes, pago, valor, dataPagamento });
-
+    console.log('📝 Dados recebidos:', { jogadorId, mes, pago, valor, dataPagamento });
+    
     // Busca o jogador
     const jogador = await Jogador.findById(jogadorId);
     if (!jogador) {
@@ -444,10 +444,10 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Erro ao atualizar pagamento:', error);
+    console.error('❌ Erro:', error);
     res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message || 'Erro interno do servidor'
     });
   }
 });

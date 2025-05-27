@@ -205,11 +205,7 @@ app.get('/api/financeiro/backup', async (req, res) => {
 
 // Armazenamento temporário dos links
 const linksPresenca = new Map();
-// Middleware para log de acessos às rotas de presença
-app.use('/api/presenca*', (req, res, next) => {
-  console.log(`[PRESENCA] ${req.method} ${req.originalUrl}`);
-  next();
-});
+
 
 // Rotas para confirmação de presença
 app.post('/api/gerar-link-presenca', (req, res) => {

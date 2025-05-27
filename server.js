@@ -62,7 +62,6 @@ app.use(hpp());
 app.use(cors({
   origin: [
     'https://sorttimes-frontend.vercel.app',
-    'https://sorttimes.vercel.app',
     'http://localhost:5173'
   ],
   credentials: true,
@@ -70,30 +69,40 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Middleware para log de requisições
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'https://sorttimes-frontend.vercel.app');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header(
-    'Access-Control-Allow-Headers',
-    'Origin, X-Requested-With, Content-Type, Accept, Authorization'
-  );
-  
-  if (req.method === 'OPTIONS') {
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH');
-    return res.status(200).json({});
-  }
-  
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  next();
+app.use(express.json());
+
+// Rotas
+app.use('/api/jogadores', require('./routes/jogadores'));
+app.use('/api/financeiro', require('./routes/financeiro'));
+
+// Rota de teste
+app.get('/api/teste', (req, res) => {
+  res.json({ message: 'API funcionando!' });
 });
 
-// Adicione após as configurações do CORS
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-  console.log('Headers:', req.headers);
-  console.log('Body:', req.body);
-  next();
+// Middleware de erro
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({
+    success: false,
+    message: 'Erro interno do servidor'
+  });
+});
+
+// Middleware para rotas não encontradas
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'Rota não encontrada',
+    path: req.path,
+    method: req.method,
+    suggestedRoutes: [
+      '/api/jogadores',
+      '/api/jogadores/:id',
+      '/api/jogadores/:id/pagamento',
+      '/api/financeiro/transacoes'
+    ]
+  });
 });
 
 // ==================== RATE LIMITING ====================

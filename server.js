@@ -1,57 +1,28 @@
 const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const path = require('path');
-const fs = require('fs');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
-const mongoSanitize = require('express-mongo-sanitize');
-const hpp = require('hpp');
-const partidasRoutes = require('./routes/partidas');
-const planilhasRoutes = require('./routes/planilhas');
-const authRoutes = require('./routes/authRoutes'); //Rota Login
-const Transacao = require('./models/Transacao'); // Adicione esta linha
-const dotenv = require('dotenv');
+const http = require('http');
 const { Server } = require('socket.io');
-const { v4: uuidv4 } = require('uuid');
+const cors = require('cors');
+const mongoose = require('mongoose');
 require('dotenv').config();
 
-// Carrega as variáveis de ambiente
-dotenv.config();
+const app = express();
+const server = http.createServer(app);
 
-// Debug para verificar as variáveis de ambiente
-console.log('Variáveis de ambiente carregadas:', {
-  mongoUri: process.env.MONGO_URI ? 'Presente' : 'Ausente',
-  port: process.env.PORT
+// Configuração do Socket.IO
+const io = new Server(server, {
+  cors: {
+    origin: [
+      'https://sorttimes-frontend.vercel.app',
+      'http://localhost:5173'
+    ],
+    methods: ['GET', 'POST'],
+    credentials: true
+  }
 });
 
-// Conexão com MongoDB
-const connectDB = async () => {
-  try {
-    if (!process.env.MONGO_URI) {
-      throw new Error('MONGO_URI não está definida nas variáveis de ambiente');
-    }
-
-    await mongoose.connect(process.env.MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true
-    });
-    console.log('✅ MongoDB conectado com sucesso!');
-  } catch (error) {
-    console.error('❌ Erro ao conectar ao MongoDB:', error.message);
-    process.exit(1);
-  }
-};
-
-// Inicializa a conexão
-connectDB();
-
-// Importe as rotas
-const financeiroRoutes = require('./routes/financeiro');
-const jogadorRoutes = require('./routes/jogadores');
-const sorteioTimesRoutes = require('./routes/sorteioTimes');
-
-const app = express();
+// Importa e inicializa o socket de presença
+const presencaSocket = require('./socket/presencaSocket');
+presencaSocket(io);
 
 // ==================== CONFIGURAÇÕES DE SEGURANÇA ====================
 app.use(helmet());
@@ -420,7 +391,7 @@ app.use((err, req, res, next) => {
 
 // ==================== INICIALIZAÇÃO DO SERVIDOR ====================
 const PORT = process.env.PORT || 5000;
-const server = app.listen(PORT, () => {
+server.listen(PORT, () => {
  console.log(`🚀 Servidor rodando na porta ${PORT}`);
   console.log(`🔗 Ambiente: ${process.env.NODE_ENV || 'development'}`);
   console.log('📊 Rotas disponíveis:');
@@ -432,21 +403,6 @@ const server = app.listen(PORT, () => {
   console.log('   - /api/agenda');
   console.log(`🔍 Teste DELETE disponível em: http://localhost:${PORT}/api/planilhas/teste-delete`);
 });
-
-// Configuração do Socket.IO
-const io = new Server(server, {
-  cors: {
-    origin: [
-      'https://sorttimes-frontend.vercel.app',
-      'http://localhost:5173'
-    ],
-    methods: ["GET", "POST"],
-    credentials: true
-  }
-});
-
-// Disponibiliza o io para as rotas
-app.set('io', io);
 
 // Socket.IO connection handler
 io.on('connection', (socket) => {

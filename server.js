@@ -2,19 +2,14 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
-const fs = require('fs');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const mongoSanitize = require('express-mongo-sanitize');
 const hpp = require('hpp');
-const partidasRoutes = require('./routes/partidas');
-const planilhasRoutes = require('./routes/planilhas');
-const authRoutes = require('./routes/authRoutes'); //Rota Login
-const Transacao = require('./models/Transacao'); // Adicione esta linha
 const dotenv = require('dotenv');
 const { Server } = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
-require('dotenv').config();
+const fs = require('fs');
 
 // Carrega as variáveis de ambiente
 dotenv.config();
@@ -22,7 +17,8 @@ dotenv.config();
 // Debug para verificar as variáveis de ambiente
 console.log('Variáveis de ambiente carregadas:', {
   mongoUri: process.env.MONGO_URI ? 'Presente' : 'Ausente',
-  port: process.env.PORT
+  port: process.env.PORT,
+  nodeEnv: process.env.NODE_ENV || 'development'
 });
 
 // Conexão com MongoDB
@@ -34,7 +30,9 @@ const connectDB = async () => {
 
     await mongoose.connect(process.env.MONGO_URI, {
       useNewUrlParser: true,
-      useUnifiedTopology: true
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000
     });
     console.log('✅ MongoDB conectado com sucesso!');
   } catch (error) {
@@ -50,16 +48,31 @@ connectDB();
 const financeiroRoutes = require('./routes/financeiro');
 const jogadorRoutes = require('./routes/jogadores');
 const sorteioTimesRoutes = require('./routes/sorteioTimes');
+const partidasRoutes = require('./routes/partidas');
+const planilhasRoutes = require('./routes/planilhas');
+const authRoutes = require('./routes/authRoutes');
+const Transacao = require('./models/Transacao');
+const Jogador = require('./models/Jogador');
 
 const app = express();
 
 // ==================== CONFIGURAÇÕES DE SEGURANÇA ====================
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:"],
+      connectSrc: ["'self'", "https://sorttimes-backend.onrender.com", "ws://localhost:5000"]
+    }
+  }
+}));
 app.use(mongoSanitize());
 app.use(hpp());
 
 // ==================== CONFIGURAÇÃO DO CORS ====================
-app.use(cors({
+const corsOptions = {
   origin: [
     'https://sorttimes-frontend.vercel.app',
     'http://localhost:5173'
@@ -76,31 +89,17 @@ app.use(cors({
   exposedHeaders: ['Content-Range', 'X-Content-Range'],
   preflightContinue: false,
   optionsSuccessStatus: 204
-}));
+};
+
+app.use(cors(corsOptions));
 
 // Middleware para log de requisições
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'https://sorttimes-frontend.vercel.app');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header(
-    'Access-Control-Allow-Headers',
-    'Origin, X-Requested-With, Content-Type, Accept, Authorization'
-  );
-  
-  if (req.method === 'OPTIONS') {
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH');
-    return res.status(200).json({});
-  }
-  
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  next();
-});
-
-// Adicione após as configurações do CORS
-app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
   console.log('Headers:', req.headers);
-  console.log('Body:', req.body);
+  if (req.body && Object.keys(req.body).length > 0) {
+    console.log('Body:', req.body);
+  }
   next();
 });
 
@@ -131,38 +130,18 @@ app.use(express.urlencoded({
   parameterLimit: 100
 }));
 
-// Middlewares
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Middleware de log melhorado
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-  console.log('Body:', req.body);
-  next();
-});
-
 // ==================== ROTAS PRINCIPAIS ====================
 console.log('📡 Inicializando rotas...');
 
-// Middleware de verificação de rota para planilhas
-app.use('/api/planilhas', (req, res, next) => {
-  console.log(`📦 Rota /api/planilhas acessada: ${req.method} ${req.originalUrl}`);
-  next();
-});
-
-app.use('/api/financeiro', (req, res, next) => {
-  console.log(`💰 Rota /api/financeiro acessada: ${req.method} ${req.originalUrl}`);
-  next();
-});
-
-// ADICIONE A ROTA RAIZ AQUI - ANTES DAS OUTRAS ROTAS
+// Rota raiz
 app.get('/', (req, res) => {
-    res.json({
-        message: 'SortTimes API',
-        status: 'online',
-        version: '1.0.0'
-    });
+  res.json({
+    message: 'SortTimes API',
+    status: 'online',
+    version: '1.0.0',
+    socket: 'active',
+    environment: process.env.NODE_ENV || 'development'
+  });
 });
 
 // Carregar rotas
@@ -171,87 +150,94 @@ app.use('/api/sorteio-times', sorteioTimesRoutes);
 app.use('/api/financeiro', financeiroRoutes);
 app.use('/api/agenda', partidasRoutes);
 app.use('/api/planilhas', planilhasRoutes);
-app.use('/api/auth', authRoutes); // Rota de autenticação
+app.use('/api/auth', authRoutes);
 
-// Rota de teste para DELETE
-app.delete('/api/planilhas/teste-delete', (req, res) => {
-  console.log('✅ Rota DELETE de teste funcionando');
-  res.json({ 
-    success: true, 
-    message: 'Rota DELETE de planilhas está funcionando',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Rota para servir o arquivo financeiro.json quando necessário
-app.get('/api/financeiro/backup', async (req, res) => {
-  try {
-    const transacoes = await Transacao.find().lean();
-    const jogadores = await Jogador.find().lean();
-    
-    res.json({
-      success: true,
-      transacoes,
-      jogadores,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    res.status(500).json({ 
-      success: false,
-      message: 'Erro ao gerar backup financeiro'
-    });
-  }
-});
-
-// Armazenamento temporário dos links
+// ==================== ROTAS DE PRESENÇA ====================
 const linksPresenca = new Map();
 
-// Rotas para confirmação de presença
+// Middleware para rotas de presença
+app.use('/api/presenca*', (req, res, next) => {
+  console.log(`[PRESENCA] ${req.method} ${req.originalUrl}`);
+  next();
+});
+
+// Gerar link de presença
 app.post('/api/gerar-link-presenca', (req, res) => {
   try {
+    const { jogadores, dataJogo } = req.body;
+    
+    if (!jogadores || !Array.isArray(jogadores)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Lista de jogadores inválida'
+      });
+    }
+
     const linkId = uuidv4();
     const dadosLink = {
-      jogadores: req.body.jogadores,
-      criadoEm: Date.now()
+      jogadores: jogadores.map(j => ({
+        id: j.id,
+        nome: j.nome,
+        presente: false
+      })),
+      dataJogo,
+      criadoEm: new Date(),
+      atualizadoEm: new Date()
     };
     
     linksPresenca.set(linkId, dadosLink);
     
+    console.log(`🔗 Link gerado: ${linkId} para ${jogadores.length} jogadores`);
+    
     res.json({ 
       success: true,
-      linkId 
+      linkId,
+      dataJogo
     });
   } catch (error) {
-    console.error('Erro ao gerar link:', error);
+    console.error('❌ Erro ao gerar link:', error);
     res.status(500).json({ 
       success: false,
-      message: 'Erro ao gerar link de presença' 
+      message: 'Erro interno ao gerar link de presença',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
 
+// Obter dados de presença
 app.get('/api/presenca/:linkId', (req, res) => {
   try {
     const dados = linksPresenca.get(req.params.linkId);
+    
     if (!dados) {
+      console.log(`⚠️ Link não encontrado: ${req.params.linkId}`);
       return res.status(404).json({ 
         success: false,
-        message: 'Link não encontrado ou expirado' 
+        message: 'Link não encontrado ou expirado',
+        code: 'LINK_NOT_FOUND'
       });
     }
+    
+    console.log(`📋 Dados recuperados para link: ${req.params.linkId}`);
+    
     res.json({ 
       success: true,
-      jogadores: dados.jogadores 
+      data: {
+        jogadores: dados.jogadores,
+        dataJogo: dados.dataJogo
+      }
     });
   } catch (error) {
-    console.error('Erro ao buscar presença:', error);
+    console.error('❌ Erro ao buscar presença:', error);
     res.status(500).json({ 
       success: false,
-      message: 'Erro ao buscar dados de presença' 
+      message: 'Erro interno ao buscar dados de presença',
+      code: 'SERVER_ERROR'
     });
   }
 });
 
+// Confirmar presença
 app.post('/api/presenca/:linkId/confirmar', (req, res) => {
   try {
     const { jogadorId, presente } = req.body;
@@ -260,84 +246,128 @@ app.post('/api/presenca/:linkId/confirmar', (req, res) => {
     if (!dados) {
       return res.status(404).json({ 
         success: false,
-        message: 'Link não encontrado ou expirado' 
+        message: 'Link não encontrado ou expirado',
+        code: 'LINK_NOT_FOUND'
       });
     }
 
     const jogadorIndex = dados.jogadores.findIndex(j => j.id === jogadorId);
-    if (jogadorIndex >= 0) {
-      dados.jogadores[jogadorIndex].presente = presente;
-      io.emit('presencaAtualizada', { jogadorId, presente });
-      
-      res.json({ success: true });
-    } else {
-      res.status(404).json({ 
+    
+    if (jogadorIndex === -1) {
+      return res.status(404).json({ 
         success: false,
-        message: 'Jogador não encontrado' 
+        message: 'Jogador não encontrado neste link',
+        code: 'PLAYER_NOT_FOUND'
       });
     }
+
+    // Atualiza o status de presença
+    dados.jogadores[jogadorIndex].presente = presente;
+    dados.atualizadoEm = new Date();
+    
+    // Notifica todos os clientes via Socket.IO
+    const nomeJogador = dados.jogadores[jogadorIndex].nome;
+    res.locals.io.emit('presencaAtualizada', { 
+      linkId: req.params.linkId,
+      jogadorId,
+      presente,
+      nome: nomeJogador
+    });
+    
+    console.log(`✅ Presença atualizada: ${nomeJogador} -> ${presente ? 'Presente' : 'Ausente'}`);
+    
+    res.json({ 
+      success: true,
+      message: `Presença ${presente ? 'confirmada' : 'removida'} com sucesso`
+    });
   } catch (error) {
-    console.error('Erro ao confirmar presença:', error);
+    console.error('❌ Erro ao confirmar presença:', error);
     res.status(500).json({ 
       success: false,
-      message: 'Erro ao confirmar presença' 
+      message: 'Erro interno ao confirmar presença',
+      code: 'SERVER_ERROR'
     });
   }
 });
 
-// Rota de saúde aprimorada 
-app.get('/api/health', async (req, res) => {
-  const dbStatus = mongoose.connection.readyState;
-  const statusMap = {
-    0: 'disconnected',
-    1: 'connected',
-    2: 'connecting',
-    3: 'disconnecting'
-  };
-  
-  try {
-    // Teste adicional para verificar coleção de transações
-    const transacoesCount = await Transacao.countDocuments();
+// ==================== INICIALIZAÇÃO DO SERVIDOR ====================
+const PORT = process.env.PORT || 5000;
+const server = app.listen(PORT, () => {
+  console.log(`🚀 Servidor rodando na porta ${PORT}`);
+  console.log(`🔗 Ambiente: ${process.env.NODE_ENV || 'development'}`);
+  console.log('📊 Rotas disponíveis:');
+  console.log('   - /api/jogadores');
+  console.log('   - /api/financeiro');
+  console.log('   - /api/sorteio-times');
+  console.log('   - /api/planilhas');
+  console.log('   - /api/agenda');
+  console.log('   - /api/auth');
+  console.log('   - /api/presenca');
+});
+
+// ==================== CONFIGURAÇÃO DO SOCKET.IO ====================
+const io = new Server(server, {
+  cors: corsOptions,
+  path: "/socket.io",
+  transports: ["websocket", "polling"],
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  serveClient: false
+});
+
+// Disponibiliza o io para as rotas via res.locals
+app.use((req, res, next) => {
+  res.locals.io = io;
+  next();
+});
+
+// Configuração dos eventos do Socket.IO
+io.on('connection', (socket) => {
+  console.log(`⚡ Nova conexão Socket.IO: ${socket.id}`);
+
+  // Entrar em uma sala específica (para links de presença)
+  socket.on('entrarSala', (linkId) => {
+    socket.join(linkId);
+    console.log(`👥 Socket ${socket.id} entrou na sala ${linkId}`);
+  });
+
+  // Sair de uma sala
+  socket.on('sairSala', (linkId) => {
+    socket.leave(linkId);
+    console.log(`🚪 Socket ${socket.id} saiu da sala ${linkId}`);
+  });
+
+  // Lidar com atualizações de presença
+  socket.on('atualizarPresenca', (data) => {
+    const { linkId, jogadorId, presente } = data;
+    console.log(`🔄 Atualizando presença: ${jogadorId} -> ${presente}`);
     
-    res.status(dbStatus === 1 ? 200 : 503).json({
-      status: dbStatus === 1 ? 'healthy' : 'unhealthy',
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      database: statusMap[dbStatus] || 'unknown',
-      financeiro: {
-        transacoes: transacoesCount,
-        status: 'operational'
-      },
-      memoryUsage: process.memoryUsage(),
-      activeRoutes: [
-        '/api/jogadores',
-        '/api/planilhas',
-        '/api/financeiro',
-        '/api/sorteio-times',
-        '/api/agenda'
-      ]
-    });
-  } catch (error) {
-    res.status(503).json({
-      status: 'unhealthy',
-      database: statusMap[dbStatus] || 'unknown',
-      financeiro: {
-        status: 'degraded',
-        error: error.message
-      }
-    });
-  }
+    // Emite apenas para a sala específica
+    io.to(linkId).emit('presencaAtualizada', data);
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`🔌 Socket desconectado: ${socket.id}`);
+  });
+
+  // Middleware para verificar autenticação
+  socket.use((packet, next) => {
+    console.log(`📦 Pacote Socket.IO: ${packet[0]}`, packet[1]);
+    next();
+  });
+
+  // Tratamento de erros
+  socket.on('error', (err) => {
+    console.error(`❌ Erro no Socket ${socket.id}:`, err);
+  });
 });
 
-// Servir arquivos estáticos com cache control
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
-  maxAge: '1d',
-  setHeaders: (res, path) => {
-    if (path.endsWith('.json')) {
-      res.set('Cache-Control', 'no-store');
-    }
-  }
-}));
+// Monitoramento de conexões
+setInterval(() => {
+  const socketsCount = io.of("/").sockets.size;
+  const roomsCount = io.of("/").adapter.rooms.size;
+  console.log(`📊 Estatísticas: ${socketsCount} sockets, ${roomsCount} salas`);
+}, 60000);
 
 // ==================== TRATAMENTO DE ERROS ====================
 // Rota não encontrada
@@ -352,54 +382,20 @@ app.use((req, res) => {
       '/api/jogadores',
       '/api/financeiro',
       '/api/sorteio-times',
-      '/api/planilhas'
+      '/api/planilhas',
+      '/api/presenca'
     ],
     timestamp: new Date().toISOString()
   });
 });
 
-// Adicione antes do tratamento de erros
-app.get('/api/financeiro/quick-stats', async (req, res) => {
-  try {
-    const [receitas, despesas, jogadores] = await Promise.all([
-      Transacao.aggregate([
-        { $match: { tipo: 'receita' } },
-        { $group: { _id: null, total: { $sum: '$valor' } } }
-      ]),
-      Transacao.aggregate([
-        { $match: { tipo: 'despesa' } },
-        { $group: { _id: null, total: { $sum: '$valor' } } }
-      ]),
-      Jogador.countDocuments()
-    ]);
-
-    res.json({
-      success: true,
-      receitas: receitas[0]?.total || 0,
-      despesas: despesas[0]?.total || 0,
-      saldo: (receitas[0]?.total || 0) - (despesas[0]?.total || 0),
-      totalJogadores: jogadores
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Erro ao calcular estatísticas'
-    });
-  }
-});
-
-// Manipulador de erros global aprimorado
+// Manipulador de erros global
 app.use((err, req, res, next) => {
   const timestamp = new Date().toISOString();
   console.error(`[${timestamp}] Erro:`, err.stack);
   
   const statusCode = err.statusCode || 500;
   const isProduction = process.env.NODE_ENV === 'production';
-  
-  // Tratamento especial para erros de transação
-  if (err.message.includes('Transacao') || err.message.includes('financeiro')) {
-    console.error('💸 Erro financeiro detectado:', err.message);
-  }
   
   const errorResponse = {
     success: false,
@@ -409,7 +405,6 @@ app.use((err, req, res, next) => {
     timestamp,
     path: req.path,
     method: req.method,
-    // Adiciona tipo de erro para frontend identificar
     errorType: err.errorType || 'general_error'
   };
   
@@ -419,45 +414,6 @@ app.use((err, req, res, next) => {
   }
   
   res.status(statusCode).json(errorResponse);
-});
-
-// ==================== INICIALIZAÇÃO DO SERVIDOR ====================
-const PORT = process.env.PORT || 5000;
-const server = app.listen(PORT, () => {
- console.log(`🚀 Servidor rodando na porta ${PORT}`);
-  console.log(`🔗 Ambiente: ${process.env.NODE_ENV || 'development'}`);
-  console.log('📊 Rotas disponíveis:');
-  console.log('   - /api/jogadores');
-  console.log('   - /api/financeiro');
-  console.log('   - /api/financeiro/quick-stats');
-  console.log('   - /api/sorteio-times');
-  console.log('   - /api/planilhas');
-  console.log('   - /api/agenda');
-  console.log(`🔍 Teste DELETE disponível em: http://localhost:${PORT}/api/planilhas/teste-delete`);
-});
-
-// Configuração do Socket.IO
-const io = new Server(server, {
-  cors: {
-    origin: [
-      'https://sorttimes-frontend.vercel.app',
-      'http://localhost:5173'
-    ],
-    methods: ["GET", "POST"],
-    credentials: true
-  }
-});
-
-// Disponibiliza o io para as rotas
-app.set('io', io);
-
-// Socket.IO connection handler
-io.on('connection', (socket) => {
-  console.log('👤 Usuário conectado:', socket.id);
-
-  socket.on('disconnect', () => {
-    console.log('👋 Usuário desconectado:', socket.id);
-  });
 });
 
 // ==================== ENCERRAMENTO SEGURO ====================
@@ -485,21 +441,13 @@ const shutdown = (signal) => {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
-
-// Tratamento de rejeições não capturadas de Promises
 process.on('unhandledRejection', (reason, promise) => {
   console.error('⚠️ Rejeição não tratada:', reason);
   console.error('📌 Promise:', promise);
 });
-
-// Tratamento de exceções não capturadas
 process.on('uncaughtException', (err) => {
   console.error('💥 Exceção não capturada:', err);
   shutdown('uncaughtException');
 });
 
-// Registro das rotas
-app.use('/jogadores', require('./routes/jogadores'));
-app.use('/financeiro', require('./routes/financeiro'));
-
-module.exports = app;
+module.exports = { app, server, io };

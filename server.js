@@ -238,12 +238,18 @@ app.get('/api/presenca/:linkId', (req, res) => {
 });
 
 // Confirmar presença
-app.post('/api/presenca/:linkId/confirmar', (req, res) => {
+// Atualize a rota de confirmação para:
+app.post('/api/presenca/:linkId/confirmar', async (req, res) => {
   try {
     const { jogadorId, presente } = req.body;
-    const dados = linksPresenca.get(req.params.linkId);
+    const linkId = req.params.linkId;
+    
+    console.log(`📝 Tentativa de confirmação: link=${linkId}, jogador=${jogadorId}, presente=${presente}`);
+    
+    const dados = linksPresenca.get(linkId);
     
     if (!dados) {
+      console.log(`🔍 Link não encontrado: ${linkId}`);
       return res.status(404).json({ 
         success: false,
         message: 'Link não encontrado ou expirado',
@@ -251,9 +257,10 @@ app.post('/api/presenca/:linkId/confirmar', (req, res) => {
       });
     }
 
-    const jogadorIndex = dados.jogadores.findIndex(j => j.id === jogadorId);
+    const jogador = dados.jogadores.find(j => j.id === jogadorId);
     
-    if (jogadorIndex === -1) {
+    if (!jogador) {
+      console.log(`👤 Jogador não encontrado no link: ${jogadorId}`);
       return res.status(404).json({ 
         success: false,
         message: 'Jogador não encontrado neste link',
@@ -261,31 +268,34 @@ app.post('/api/presenca/:linkId/confirmar', (req, res) => {
       });
     }
 
-    // Atualiza o status de presença
-    dados.jogadores[jogadorIndex].presente = presente;
+    // Atualiza o status
+    jogador.presente = presente;
     dados.atualizadoEm = new Date();
     
-    // Notifica todos os clientes via Socket.IO
-    const nomeJogador = dados.jogadores[jogadorIndex].nome;
-    res.locals.io.emit('presencaAtualizada', { 
-      linkId: req.params.linkId,
+    // Notifica via Socket.IO
+    io.emit('presencaAtualizada', {
+      linkId,
       jogadorId,
       presente,
-      nome: nomeJogador
+      nome: jogador.nome
     });
     
-    console.log(`✅ Presença atualizada: ${nomeJogador} -> ${presente ? 'Presente' : 'Ausente'}`);
+    console.log(`✅ Presença atualizada: ${jogador.nome} -> ${presente ? 'Presente' : 'Ausente'}`);
     
     res.json({ 
       success: true,
-      message: `Presença ${presente ? 'confirmada' : 'removida'} com sucesso`
+      message: 'Presença atualizada com sucesso',
+      data: {
+        jogadorId,
+        presente
+      }
     });
   } catch (error) {
     console.error('❌ Erro ao confirmar presença:', error);
     res.status(500).json({ 
       success: false,
       message: 'Erro interno ao confirmar presença',
-      code: 'SERVER_ERROR'
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });

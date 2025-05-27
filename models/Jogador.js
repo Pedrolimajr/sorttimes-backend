@@ -60,7 +60,12 @@ const jogadorSchema = new mongoose.Schema({
     type: String,
     enum: ['Adimplente', 'Inadimplente'],
     default: 'Inadimplente'
-  }
+  },
+  presente: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
 }, {
   timestamps: true
 });

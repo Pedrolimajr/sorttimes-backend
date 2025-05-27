@@ -341,6 +341,31 @@ io.on('connection', (socket) => {
     console.log(`👥 Socket ${socket.id} entrou na sala ${linkId}`);
   });
 
+// Ouvir atualizações de presença do frontend
+  socket.on('atualizarPresenca', async (data) => {
+    try {
+      const { jogadorId, presente } = data;
+      
+      const jogador = await Jogador.findByIdAndUpdate(
+        jogadorId,
+        { presente },
+        { new: true }
+      );
+
+      if (jogador) {
+        // Broadcast para todos os clientes
+        io.emit('presencaAtualizada', {
+          jogadorId: jogador._id,
+          presente: jogador.presente,
+          nome: jogador.nome
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao processar atualização de presença:', error);
+    }
+  });
+
+
   // Sair de uma sala
   socket.on('sairSala', (linkId) => {
     socket.leave(linkId);

@@ -452,4 +452,54 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
   }
 });
 
+/**
+ * @route PATCH /api/jogadores/:id/presenca
+ * @desc Atualiza o status de presença de um jogador
+ * @access Privado
+ */
+router.patch('/:id/presenca', async (req, res) => {
+  try {
+    const { presente } = req.body;
+    
+    if (typeof presente !== 'boolean') {
+      return res.status(400).json({ 
+        success: false,
+        message: 'O campo "presente" deve ser um booleano' 
+      });
+    }
+
+    const jogador = await Jogador.findByIdAndUpdate(
+      req.params.id,
+      { presente },
+      { new: true }
+    );
+
+    if (!jogador) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Jogador não encontrado' 
+      });
+    }
+
+    // Emitir evento via Socket.IO
+    req.app.get('io').emit('presencaAtualizada', {
+      jogadorId: jogador._id,
+      presente: jogador.presente,
+      nome: jogador.nome
+    });
+
+    res.json({ 
+      success: true,
+      data: jogador 
+    });
+  } catch (error) {
+    console.error('Erro ao atualizar presença:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Erro ao atualizar presença do jogador',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
 module.exports = router;

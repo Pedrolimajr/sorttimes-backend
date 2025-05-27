@@ -356,13 +356,16 @@ router.post('/sortear-times', async (req, res) => {
   }
 });
 
-// Rota para atualizar pagamento
-router.post('/:id/pagamento', async (req, res) => {
+// Verifique se a rota está registrada assim:
+router.post('/:jogadorId/pagamentos', async (req, res) => {
   try {
-    const { id } = req.params;
+    const { jogadorId } = req.params;z
     const { mes, pago, valor, dataPagamento } = req.body;
-
-    const jogador = await Jogador.findById(id);
+    
+    console.log('📝 Dados recebidos:', { jogadorId, mes, pago, valor, dataPagamento });
+    
+    // Busca o jogador
+    const jogador = await Jogador.findById(jogadorId);
     if (!jogador) {
       return res.status(404).json({ 
         success: false, 
@@ -370,29 +373,81 @@ router.post('/:id/pagamento', async (req, res) => {
       });
     }
 
-    // Atualiza o array de pagamentos
+    // Atualiza o pagamento
+    if (!jogador.pagamentos) {
+      jogador.pagamentos = Array(12).fill(false);
+    }
+    
     jogador.pagamentos[mes] = pago;
-    
-    // Atualiza status financeiro
-    const mesAtual = new Date().getMonth();
-    const mesesDevendo = jogador.pagamentos
-      .slice(0, mesAtual + 1)
-      .filter(p => !p).length;
-    
-    jogador.statusFinanceiro = mesesDevendo === 0 ? 'Adimplente' : 'Inadimplente';
-
     await jogador.save();
 
-    return res.json({
+    // Registra a transação
+    if (pago) {
+      const transacao = new Transacao({
+        jogadorId,
+        jogadorNome: jogador.nome,
+        valor: valor || 100, // Valor padrão caso não seja informado
+        tipo: 'receita',
+        categoria: 'mensalidade',
+        descricao: `Mensalidade - ${jogador.nome} (${mes + 1}/${new Date().getFullYear()})`,
+        data: dataPagamento || new Date(),
+        status: 'confirmado'
+      });
+
+      await transacao.save();
+      
+      // Recalcula estatísticas financeiras
+      const estatisticas = await Transacao.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalReceitas: {
+              $sum: { $cond: [{ $eq: ['$tipo', 'receita'] }, '$valor', 0] }
+            },
+            totalDespesas: {
+              $sum: { $cond: [{ $eq: ['$tipo', 'despesa'] }, '$valor', 0] }
+            }
+          }
+        }
+      ]);
+
+      // Emite eventos via Socket.IO
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('pagamentoAtualizado', {
+          jogadorId,
+          mes,
+          pago,
+          statusFinanceiro: jogador.statusFinanceiro
+        });
+        
+        io.emit('atualizacaoFinanceira', {
+          totalReceitas: estatisticas[0]?.totalReceitas || 0,
+          totalDespesas: estatisticas[0]?.totalDespesas || 0,
+          saldo: (estatisticas[0]?.totalReceitas || 0) - (estatisticas[0]?.totalDespesas || 0)
+        });
+      }
+    }
+
+    res.json({
       success: true,
-      data: jogador,
-      message: 'Pagamento atualizado com sucesso'
+      message: 'Pagamento atualizado com sucesso',
+      data: {
+        jogador: {
+          _id: jogador._id,
+          nome: jogador.nome,
+          pagamentos: jogador.pagamentos,
+          statusFinanceiro: jogador.statusFinanceiro
+        },
+        transacao: pago ? transacao : null
+      }
     });
+
   } catch (error) {
-    console.error('Erro ao atualizar pagamento:', error);
-    return res.status(500).json({
+    console.error('❌ Erro:', error);
+    res.status(500).json({
       success: false,
-      message: 'Erro ao atualizar pagamento'
+      message: error.message || 'Erro interno do servidor'
     });
   }
 });

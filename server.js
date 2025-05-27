@@ -74,6 +74,8 @@ app.use(express.json());
 // Rotas
 app.use('/api/jogadores', require('./routes/jogadores'));
 app.use('/api/financeiro', require('./routes/financeiro'));
+app.use('/api/sorteio', require('./routes/sorteioTimes')); // Alteração aqui
+app.use('/api/presenca', require('./routes/presenca'));
 
 // Rota de teste
 app.get('/api/teste', (req, res) => {
@@ -95,13 +97,7 @@ app.use((req, res) => {
     success: false,
     message: 'Rota não encontrada',
     path: req.path,
-    method: req.method,
-    suggestedRoutes: [
-      '/api/jogadores',
-      '/api/jogadores/:id',
-      '/api/jogadores/:id/pagamento',
-      '/api/financeiro/transacoes'
-    ]
+    method: req.method
   });
 });
 

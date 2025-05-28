@@ -356,7 +356,7 @@ router.post('/sortear-times', async (req, res) => {
   }
 });
 
-// Verifique se a rota está registrada assim:
+
 router.post('/:jogadorId/pagamentos', async (req, res) => {
   try {
     const { jogadorId } = req.params;

@@ -211,9 +211,11 @@ app.post('/api/gerar-link-presenca', (req, res) => {
   try {
     const linkId = uuidv4();
     const dadosLink = {
-      jogadores: req.body.jogadores,
-      criadoEm: Date.now()
-    };
+  jogadores: req.body.jogadores,
+  criadoEm: Date.now(),
+  dataJogo: req.body.dataJogo // <-- Adicione isso!
+};
+
     
     linksPresenca.set(linkId, dadosLink);
     
@@ -239,10 +241,14 @@ app.get('/api/presenca/:linkId', (req, res) => {
         message: 'Link não encontrado ou expirado' 
       });
     }
-    res.json({ 
-      success: true,
-      jogadores: dados.jogadores 
-    });
+   res.json({ 
+  success: true,
+  data: {
+    jogadores: dados.jogadores,
+    dataJogo: dados.dataJogo || null
+  }
+});
+
   } catch (error) {
     console.error('Erro ao buscar presença:', error);
     res.status(500).json({ 

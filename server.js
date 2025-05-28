@@ -296,6 +296,33 @@ app.post('/api/presenca/:linkId/confirmar', (req, res) => {
   }
 });
 
+// No seu arquivo de rotas (backend)
+app.post('/api/presenca/:linkId/sincronizar', async (req, res) => {
+  try {
+    const { linkId } = req.params;
+    const { jogadores } = req.body;
+
+    // Atualiza os dados do link
+    const dadosLink = linksPresenca.get(linkId);
+    if (!dadosLink) {
+      return res.status(404).json({ success: false, message: 'Link não encontrado' });
+    }
+
+    // Atualiza o estado de presença
+    dadosLink.jogadores = jogadores;
+    linksPresenca.set(linkId, dadosLink);
+
+    // Notifica todos os clientes conectados
+    req.app.get('io').emit('presencaSincronizada', { linkId, jogadores });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erro ao sincronizar presença:', error);
+    res.status(500).json({ success: false, message: 'Erro ao sincronizar' });
+  }
+});
+
+
 // Rota de saúde aprimorada 
 app.get('/api/health', async (req, res) => {
   const dbStatus = mongoose.connection.readyState;

@@ -11,8 +11,6 @@ const partidasRoutes = require('./routes/partidas');
 const planilhasRoutes = require('./routes/planilhas');
 const authRoutes = require('./routes/authRoutes'); //Rota Login
 const Transacao = require('./models/Transacao'); // Adicione esta linha
-const Jogador = require('./models/Jogador');
-
 const dotenv = require('dotenv');
 const { Server } = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
@@ -207,7 +205,6 @@ app.get('/api/financeiro/backup', async (req, res) => {
 
 // Armazenamento temporário dos links
 const linksPresenca = new Map();
-
 
 // Rotas para confirmação de presença
 app.post('/api/gerar-link-presenca', (req, res) => {

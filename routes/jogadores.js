@@ -357,6 +357,32 @@ router.post('/sortear-times', async (req, res) => {
 });
 
 
+// Atualiza pagamento de um jogador em um mês específico
+router.post('/:id/pagamentos', async (req, res) => {
+  const { mes, pago, valor, dataPagamento } = req.body;
+
+  try {
+    const jogador = await Jogador.findById(req.params.id);
+    if (!jogador) {
+      return res.status(404).json({ success: false, message: 'Jogador não encontrado' });
+    }
+
+    if (!Array.isArray(jogador.pagamentos)) {
+      jogador.pagamentos = Array(12).fill(false);
+    }
+
+    jogador.pagamentos[mes] = pago;
+
+    await jogador.save();
+
+    res.json({ success: true, message: 'Pagamento atualizado com sucesso' });
+  } catch (error) {
+    console.error('Erro ao atualizar pagamento:', error);
+    res.status(500).json({ success: false, message: 'Erro ao atualizar pagamento' });
+  }
+});
+
+
 router.post('/:jogadorId/pagamentos', async (req, res) => {
   try {
     const { jogadorId } = req.params;

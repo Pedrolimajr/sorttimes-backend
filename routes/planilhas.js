@@ -123,4 +123,44 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// DELETE excluir planilha
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Validação de ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        status: 'error',
+        code: 'INVALID_ID',
+        message: 'ID inválido'
+      });
+    }
+
+    const planilha = await Planilha.findByIdAndDelete(id);
+
+    if (!planilha) {
+      return res.status(404).json({
+        status: 'error',
+        code: 'NOT_FOUND',
+        message: 'Planilha não encontrada'
+      });
+    }
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Planilha excluída com sucesso',
+      data: planilha
+    });
+  } catch (error) {
+    console.error('Erro ao excluir planilha:', error);
+    res.status(500).json({
+      status: 'error',
+      code: 'DELETE_FAILED',
+      message: 'Falha ao excluir planilha'
+    });
+  }
+});
+
+
 module.exports = router;

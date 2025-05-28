@@ -10,6 +10,24 @@ router.use((req, res, next) => {
   next();
 });
 
+// GET todas as planilhas
+router.get('/', async (req, res) => {
+  try {
+    const planilhas = await Planilha.find().sort({ dataAtualizacao: -1 });
+    res.status(200).json({
+      status: 'success',
+      data: planilhas
+    });
+  } catch (error) {
+    console.error('Erro ao buscar planilhas:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Erro ao buscar planilhas'
+    });
+  }
+});
+
+
 // POST criar nova planilha (ATUALIZADO)
 router.post('/', async (req, res) => {
   try {

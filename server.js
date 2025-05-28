@@ -125,4 +125,4 @@ const startServer = async () => {
   });
 };
 
-startServer();
+module.exports = router;

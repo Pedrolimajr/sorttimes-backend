@@ -59,7 +59,7 @@ app.use(mongoSanitize());
 app.use(hpp());
 
 // ==================== CONFIGURAÇÃO DO CORS ====================
-app.use(cors({
+const corsOptions = {
   origin: [
     'https://sorttimes-frontend.vercel.app',
     'http://localhost:5173'
@@ -67,7 +67,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   credentials: true,
   allowedHeaders: [
-    'Content-Type', 
+    'Content-Type',
     'Authorization',
     'X-Requested-With',
     'Accept',
@@ -77,10 +77,11 @@ app.use(cors({
   exposedHeaders: ['Content-Range', 'X-Content-Range'],
   preflightContinue: false,
   optionsSuccessStatus: 204
-}));
+};
 
-// Adicione um middleware específico para OPTIONS
-app.options('*', cors());
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // com a mesma configuração
+
 
 // Middleware para log de requisições
 app.use((req, res, next) => {

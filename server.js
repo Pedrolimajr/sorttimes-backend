@@ -323,17 +323,16 @@ app.post('/api/presenca/:linkId/sincronizar', async (req, res) => {
 });
 
 // Rota sincronizar-sistema
-app.post('/api/presenca/sincronizar-sistema', async (req, res) => {
+app.post('/api/presenca/sincronizar-sistema', (req, res) => {
   try {
     const { linkId, jogadores } = req.body;
-
-    // Atualiza os dados no link
     const dadosLink = linksPresenca.get(linkId);
+
     if (!dadosLink) {
       return res.status(404).json({ success: false, message: 'Link não encontrado' });
     }
 
-    // Atualiza o estado no link
+    // Atualiza os dados do link
     dadosLink.jogadores = jogadores;
     linksPresenca.set(linkId, dadosLink);
 
@@ -342,7 +341,7 @@ app.post('/api/presenca/sincronizar-sistema', async (req, res) => {
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Erro ao sincronizar sistema:', error);
+    console.error('Erro ao sincronizar:', error);
     res.status(500).json({ success: false, message: 'Erro ao sincronizar' });
   }
 });

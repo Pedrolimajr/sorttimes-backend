@@ -71,12 +71,16 @@ app.use(cors({
     'Authorization',
     'X-Requested-With',
     'Accept',
-    'Origin'
+    'Origin',
+    'Access-Control-Allow-Headers'
   ],
   exposedHeaders: ['Content-Range', 'X-Content-Range'],
   preflightContinue: false,
   optionsSuccessStatus: 204
 }));
+
+// Adicione um middleware específico para OPTIONS
+app.options('*', cors());
 
 // Middleware para log de requisições
 app.use((req, res, next) => {
@@ -443,20 +447,30 @@ const server = app.listen(PORT, () => {
 });
 
 // Configuração do Socket.IO
+app.options('*', cors());
+
+// Atualize a configuração do Socket.IO
 const io = new Server(server, {
   cors: {
     origin: [
       'https://sorttimes-frontend.vercel.app',
       'http://localhost:5173'
     ],
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    methods: ["GET", "POST"],
+    allowedHeaders: ["my-custom-header"],
     credentials: true
   },
-  path: "/socket.io",
-  transports: ["websocket", "polling"],
-  pingTimeout: 60000,
-  pingInterval: 25000
+  transports: ['websocket', 'polling'], // Adicione polling como fallback
+  allowEIO3: true // Para compatibilidade com clientes mais antigos
+});
+
+// Adicione tratamento de erros para o Socket.IO
+io.engine.on("connection_error", (err) => {
+  console.log("Erro de conexão Socket.IO:", {
+    code: err.code,
+    message: err.message,
+    context: err.context
+  });
 });
 
 // Disponibiliza o io para as rotas

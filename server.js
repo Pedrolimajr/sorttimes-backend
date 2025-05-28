@@ -322,6 +322,30 @@ app.post('/api/presenca/:linkId/sincronizar', async (req, res) => {
   }
 });
 
+// Rota sincronizar-sistema
+app.post('/api/presenca/sincronizar-sistema', async (req, res) => {
+  try {
+    const { linkId, jogadores } = req.body;
+
+    // Atualiza os dados no link
+    const dadosLink = linksPresenca.get(linkId);
+    if (!dadosLink) {
+      return res.status(404).json({ success: false, message: 'Link não encontrado' });
+    }
+
+    // Atualiza o estado no link
+    dadosLink.jogadores = jogadores;
+    linksPresenca.set(linkId, dadosLink);
+
+    // Notifica todos os clientes
+    io.emit('sistemaParaLink', { linkId, jogadores });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erro ao sincronizar sistema:', error);
+    res.status(500).json({ success: false, message: 'Erro ao sincronizar' });
+  }
+});
 
 // Rota de saúde aprimorada 
 app.get('/api/health', async (req, res) => {

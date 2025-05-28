@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
-
+const Planilha = require('../models/Planilha');
 // Middleware para headers CORS
 router.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');

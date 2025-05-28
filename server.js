@@ -125,11 +125,11 @@ app.use(express.json({
   }
 }));
 
-app.use(express.urlencoded({ 
-  extended: true, 
-  limit: '10mb',
-  parameterLimit: 100
-}));
+// app.use(express.urlencoded({ 
+//   extended: true, 
+//   limit: '10mb',
+//   parameterLimit: 100
+// }));
 
 // Middlewares
 app.use(express.json());
@@ -504,7 +504,7 @@ process.on('uncaughtException', (err) => {
 });
 
 // Registro das rotas
-app.use('/jogadores', require('./routes/jogadores'));
-app.use('/financeiro', require('./routes/financeiro'));
+// app.use('/jogadores', require('./routes/jogadores'));
+// app.use('/financeiro', require('./routes/financeiro'));
 
 module.exports = app;

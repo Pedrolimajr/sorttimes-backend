@@ -15,7 +15,7 @@ const dotenv = require('dotenv');
 const { Server } = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
-const jogadorRoutes = require('./routes/jogadores');
+
 
 
 // Carrega as variáveis de ambiente

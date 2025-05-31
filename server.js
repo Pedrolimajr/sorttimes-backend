@@ -9,11 +9,13 @@ const mongoSanitize = require('express-mongo-sanitize');
 const hpp = require('hpp');
 const partidasRoutes = require('./routes/partidas');
 const planilhasRoutes = require('./routes/planilhas');
-const authRoutes = require('./routes/authRoutes'); //Rota Login
-const Transacao = require('./models/Transacao'); // Adicione esta linha
+const authRoutes = require('./routes/authRoutes');
+const Transacao = require('./models/Transacao');
 const dotenv = require('dotenv');
 const { Server } = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
+const auth = require('./middleware/auth');
+const protectedRoutes = require('./routes/protectedRoutes');
 require('dotenv').config();
 
 // Carrega as variáveis de ambiente
@@ -80,32 +82,18 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions)); // com a mesma configuração
-
+app.options('*', cors(corsOptions));
 
 // Middleware para log de requisições
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'https://sorttimes-frontend.vercel.app');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header(
-    'Access-Control-Allow-Headers',
-    'Origin, X-Requested-With, Content-Type, Accept, Authorization'
-  );
+  const isProtected = req.path.startsWith('/api') && !req.path.startsWith('/api/auth');
   
-  if (req.method === 'OPTIONS') {
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH');
-    return res.status(200).json({});
-  }
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`, {
+    protected: isProtected,
+    ip: req.ip,
+    userAgent: req.headers['user-agent']
+  });
   
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  next();
-});
-
-// Adicione após as configurações do CORS
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-  console.log('Headers:', req.headers);
-  console.log('Body:', req.body);
   next();
 });
 
@@ -136,32 +124,19 @@ app.use(express.urlencoded({
   parameterLimit: 100
 }));
 
-// Middlewares
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Middleware de log melhorado
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-  console.log('Body:', req.body);
-  next();
-});
+// Verificação do middleware de autenticação
+console.log('🔐 Verificando configuração de autenticação...');
+if (typeof auth !== 'function') {
+  console.error('❌ Middleware de autenticação não está configurado corretamente');
+  process.exit(1);
+} else {
+  console.log('✅ Middleware de autenticação configurado com sucesso');
+}
 
 // ==================== ROTAS PRINCIPAIS ====================
 console.log('📡 Inicializando rotas...');
 
-// Middleware de verificação de rota para planilhas
-app.use('/api/planilhas', (req, res, next) => {
-  console.log(`📦 Rota /api/planilhas acessada: ${req.method} ${req.originalUrl}`);
-  next();
-});
-
-app.use('/api/financeiro', (req, res, next) => {
-  console.log(`💰 Rota /api/financeiro acessada: ${req.method} ${req.originalUrl}`);
-  next();
-});
-
-// ADICIONE A ROTA RAIZ AQUI - ANTES DAS OUTRAS ROTAS
+// Rota raiz
 app.get('/', (req, res) => {
     res.json({
         message: 'SortTimes API',
@@ -170,57 +145,20 @@ app.get('/', (req, res) => {
     });
 });
 
-// Carregar rotas
-app.use('/api/jogadores', jogadorRoutes);
-app.use('/api/sorteio-times', sorteioTimesRoutes);
-app.use('/api/financeiro', financeiroRoutes);
-app.use('/api/agenda', partidasRoutes);
-app.use('/api/planilhas', planilhasRoutes);
-app.use('/api/auth', authRoutes); // Rota de autenticação
+// Rotas públicas
+app.use('/api/auth', authRoutes);
 
-// Rota de teste para DELETE
-app.delete('/api/planilhas/teste-delete', (req, res) => {
-  console.log('✅ Rota DELETE de teste funcionando');
-  res.json({ 
-    success: true, 
-    message: 'Rota DELETE de planilhas está funcionando',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Rota para servir o arquivo financeiro.json quando necessário
-app.get('/api/financeiro/backup', async (req, res) => {
-  try {
-    const transacoes = await Transacao.find().lean();
-    const jogadores = await Jogador.find().lean();
-    
-    res.json({
-      success: true,
-      transacoes,
-      jogadores,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    res.status(500).json({ 
-      success: false,
-      message: 'Erro ao gerar backup financeiro'
-    });
-  }
-});
-
-// Armazenamento temporário dos links
+// Rotas de confirmação de presença (públicas)
 const linksPresenca = new Map();
 
-// Rotas para confirmação de presença
 app.post('/api/gerar-link-presenca', (req, res) => {
   try {
     const linkId = uuidv4();
     const dadosLink = {
-  jogadores: req.body.jogadores,
-  criadoEm: Date.now(),
-  dataJogo: req.body.dataJogo // <-- Adicione isso!
-};
-
+      jogadores: req.body.jogadores,
+      criadoEm: Date.now(),
+      dataJogo: req.body.dataJogo
+    };
     
     linksPresenca.set(linkId, dadosLink);
     
@@ -246,14 +184,13 @@ app.get('/api/presenca/:linkId', (req, res) => {
         message: 'Link não encontrado ou expirado' 
       });
     }
-   res.json({ 
-  success: true,
-  data: {
-    jogadores: dados.jogadores,
-    dataJogo: dados.dataJogo || null
-  }
-});
-
+    res.json({ 
+      success: true,
+      data: {
+        jogadores: dados.jogadores,
+        dataJogo: dados.dataJogo || null
+      }
+    });
   } catch (error) {
     console.error('Erro ao buscar presença:', error);
     res.status(500).json({ 
@@ -296,7 +233,7 @@ app.post('/api/presenca/:linkId/confirmar', (req, res) => {
   }
 });
 
-// Rota de saúde aprimorada 
+// Rota de saúde (pública)
 app.get('/api/health', async (req, res) => {
   const dbStatus = mongoose.connection.readyState;
   const statusMap = {
@@ -307,7 +244,6 @@ app.get('/api/health', async (req, res) => {
   };
   
   try {
-    // Teste adicional para verificar coleção de transações
     const transacoesCount = await Transacao.countDocuments();
     
     res.status(dbStatus === 1 ? 200 : 503).json({
@@ -336,6 +272,43 @@ app.get('/api/health', async (req, res) => {
         status: 'degraded',
         error: error.message
       }
+    });
+  }
+});
+
+// Rotas protegidas
+app.use('/api', auth, protectedRoutes);
+
+// Rotas específicas que podem ser públicas ou protegidas
+app.use('/api/planilhas', planilhasRoutes);
+app.use('/api/agenda', partidasRoutes);
+
+// Rota de teste para DELETE (protegida)
+app.delete('/api/planilhas/teste-delete', auth, (req, res) => {
+  console.log('✅ Rota DELETE de teste funcionando');
+  res.json({ 
+    success: true, 
+    message: 'Rota DELETE de planilhas está funcionando',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Rota para servir o arquivo financeiro.json quando necessário
+app.get('/api/financeiro/backup', auth, async (req, res) => {
+  try {
+    const transacoes = await Transacao.find().lean();
+    const jogadores = await Jogador.find().lean();
+    
+    res.json({
+      success: true,
+      transacoes,
+      jogadores,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false,
+      message: 'Erro ao gerar backup financeiro'
     });
   }
 });
@@ -369,36 +342,6 @@ app.use((req, res) => {
   });
 });
 
-// Adicione antes do tratamento de erros
-app.get('/api/financeiro/quick-stats', async (req, res) => {
-  try {
-    const [receitas, despesas, jogadores] = await Promise.all([
-      Transacao.aggregate([
-        { $match: { tipo: 'receita' } },
-        { $group: { _id: null, total: { $sum: '$valor' } } }
-      ]),
-      Transacao.aggregate([
-        { $match: { tipo: 'despesa' } },
-        { $group: { _id: null, total: { $sum: '$valor' } } }
-      ]),
-      Jogador.countDocuments()
-    ]);
-
-    res.json({
-      success: true,
-      receitas: receitas[0]?.total || 0,
-      despesas: despesas[0]?.total || 0,
-      saldo: (receitas[0]?.total || 0) - (despesas[0]?.total || 0),
-      totalJogadores: jogadores
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Erro ao calcular estatísticas'
-    });
-  }
-});
-
 // Manipulador de erros global aprimorado
 app.use((err, req, res, next) => {
   const timestamp = new Date().toISOString();
@@ -406,6 +349,15 @@ app.use((err, req, res, next) => {
   
   const statusCode = err.statusCode || 500;
   const isProduction = process.env.NODE_ENV === 'production';
+  
+  // Tratamento especial para erros de autenticação
+  if (err.name === 'UnauthorizedError') {
+    return res.status(401).json({ 
+      success: false,
+      message: 'Token inválido ou expirado',
+      errorType: 'authentication_error'
+    });
+  }
   
   // Tratamento especial para erros de transação
   if (err.message.includes('Transacao') || err.message.includes('financeiro')) {
@@ -420,7 +372,6 @@ app.use((err, req, res, next) => {
     timestamp,
     path: req.path,
     method: req.method,
-    // Adiciona tipo de erro para frontend identificar
     errorType: err.errorType || 'general_error'
   };
   
@@ -438,19 +389,16 @@ const server = app.listen(PORT, () => {
  console.log(`🚀 Servidor rodando na porta ${PORT}`);
   console.log(`🔗 Ambiente: ${process.env.NODE_ENV || 'development'}`);
   console.log('📊 Rotas disponíveis:');
-  console.log('   - /api/jogadores');
-  console.log('   - /api/financeiro');
-  console.log('   - /api/financeiro/quick-stats');
-  console.log('   - /api/sorteio-times');
+  console.log('   - /api/jogadores (protegido)');
+  console.log('   - /api/financeiro (protegido)');
+  console.log('   - /api/sorteio-times (protegido)');
   console.log('   - /api/planilhas');
   console.log('   - /api/agenda');
-  console.log(`🔍 Teste DELETE disponível em: http://localhost:${PORT}/api/planilhas/teste-delete`);
+  console.log('   - /api/auth (público)');
+  console.log(`🔍 Teste DELETE disponível em: http://localhost:${PORT}/api/planilhas/teste-delete (protegido)`);
 });
 
 // Configuração do Socket.IO
-app.options('*', cors());
-
-// Atualize a configuração do Socket.IO
 const io = new Server(server, {
   cors: {
     origin: [
@@ -461,11 +409,11 @@ const io = new Server(server, {
     allowedHeaders: ["my-custom-header"],
     credentials: true
   },
-  transports: ['websocket', 'polling'], // Adicione polling como fallback
-  allowEIO3: true // Para compatibilidade com clientes mais antigos
+  transports: ['websocket', 'polling'],
+  allowEIO3: true
 });
 
-// Adicione tratamento de erros para o Socket.IO
+// Tratamento de erros do Socket.IO
 io.engine.on("connection_error", (err) => {
   console.log("Erro de conexão Socket.IO:", {
     code: err.code,
@@ -511,19 +459,14 @@ const shutdown = (signal) => {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
-
-// Tratamento de rejeições não capturadas de Promises
 process.on('unhandledRejection', (reason, promise) => {
   console.error('⚠️ Rejeição não tratada:', reason);
   console.error('📌 Promise:', promise);
 });
-
-// Tratamento de exceções não capturadas
 process.on('uncaughtException', (err) => {
   console.error('💥 Exceção não capturada:', err);
   shutdown('uncaughtException');
 });
-
 
 
 

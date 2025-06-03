@@ -14,6 +14,8 @@ const Transacao = require('./models/Transacao'); // Adicione esta linha
 const dotenv = require('dotenv');
 const { Server } = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
+const LinkPresenca = require('./models/LinkPresenca');
+
 require('dotenv').config();
 
 // Carrega as variáveis de ambiente
@@ -212,74 +214,78 @@ app.get('/api/financeiro/backup', async (req, res) => {
 const linksPresenca = new Map();
 
 // Rotas para confirmação de presença
-app.post('/api/gerar-link-presenca', (req, res) => {
+app.post('/api/gerar-link-presenca', async (req, res) => {
   try {
     const linkId = uuidv4();
-    const dadosLink = {
-  jogadores: req.body.jogadores,
-  criadoEm: Date.now(),
-  dataJogo: req.body.dataJogo // <-- Adicione isso!
-};
 
-    
-    linksPresenca.set(linkId, dadosLink);
-    
-    res.json({ 
+    const novoLink = new LinkPresenca({
+      linkId,
+      jogadores: req.body.jogadores,
+      dataJogo: req.body.dataJogo
+    });
+
+    await novoLink.save();
+
+    res.json({
       success: true,
-      linkId 
+      linkId
     });
   } catch (error) {
     console.error('Erro ao gerar link:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'Erro ao gerar link de presença' 
+      message: 'Erro ao gerar link de presença'
     });
   }
 });
 
-app.get('/api/presenca/:linkId', (req, res) => {
+app.get('/api/presenca/:linkId', async (req, res) => {
   try {
-    const dados = linksPresenca.get(req.params.linkId);
-    if (!dados) {
-      return res.status(404).json({ 
+    const link = await LinkPresenca.findOne({ linkId: req.params.linkId });
+
+    if (!link) {
+      return res.status(404).json({
         success: false,
-        message: 'Link não encontrado ou expirado' 
+        message: 'Link não encontrado'
       });
     }
-   res.json({ 
-  success: true,
-  data: {
-    jogadores: dados.jogadores,
-    dataJogo: dados.dataJogo || null
-  }
-});
 
+    res.json({
+      success: true,
+      data: {
+        jogadores: link.jogadores,
+        dataJogo: link.dataJogo
+      }
+    });
   } catch (error) {
     console.error('Erro ao buscar presença:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'Erro ao buscar dados de presença' 
+      message: 'Erro ao buscar dados de presença'
     });
   }
 });
 
-app.post('/api/presenca/:linkId/confirmar', (req, res) => {
+
+app.post('/api/presenca/:linkId/confirmar', async (req, res) => {
   try {
     const { jogadorId, presente } = req.body;
-    const dados = linksPresenca.get(req.params.linkId);
-    
-    if (!dados) {
+    const link = await LinkPresenca.findOne({ linkId: req.params.linkId });
+
+    if (!link) {
       return res.status(404).json({ 
         success: false,
-        message: 'Link não encontrado ou expirado' 
+        message: 'Link não encontrado' 
       });
     }
 
-    const jogadorIndex = dados.jogadores.findIndex(j => j.id === jogadorId);
+    const jogadorIndex = link.jogadores.findIndex(j => j.id === jogadorId);
     if (jogadorIndex >= 0) {
-      dados.jogadores[jogadorIndex].presente = presente;
+      link.jogadores[jogadorIndex].presente = presente;
+      await link.save();
+
       io.emit('presencaAtualizada', { jogadorId, presente });
-      
+
       res.json({ success: true });
     } else {
       res.status(404).json({ 
@@ -295,6 +301,7 @@ app.post('/api/presenca/:linkId/confirmar', (req, res) => {
     });
   }
 });
+
 
 // Rota de saúde aprimorada 
 app.get('/api/health', async (req, res) => {

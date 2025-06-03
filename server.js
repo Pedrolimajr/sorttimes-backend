@@ -211,7 +211,7 @@ app.get('/api/financeiro/backup', async (req, res) => {
 });
 
 // Armazenamento temporário dos links
-const linksPresenca = new Map();
+// const linksPresenca = new Map();
 
 // Rotas para confirmação de presença
 app.post('/api/gerar-link-presenca', async (req, res) => {
@@ -239,6 +239,9 @@ app.post('/api/gerar-link-presenca', async (req, res) => {
   }
 });
 
+
+
+
 app.get('/api/presenca/:linkId', async (req, res) => {
   try {
     const link = await LinkPresenca.findOne({ linkId: req.params.linkId });
@@ -246,7 +249,7 @@ app.get('/api/presenca/:linkId', async (req, res) => {
     if (!link) {
       return res.status(404).json({
         success: false,
-        message: 'Link não encontrado'
+        message: 'Link não encontrado ou expirado'
       });
     }
 
@@ -258,7 +261,7 @@ app.get('/api/presenca/:linkId', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Erro ao buscar presença:', error);
+    console.error('Erro ao buscar link:', error);
     res.status(500).json({
       success: false,
       message: 'Erro ao buscar dados de presença'
@@ -267,40 +270,42 @@ app.get('/api/presenca/:linkId', async (req, res) => {
 });
 
 
+
 app.post('/api/presenca/:linkId/confirmar', async (req, res) => {
   try {
     const { jogadorId, presente } = req.body;
     const link = await LinkPresenca.findOne({ linkId: req.params.linkId });
 
     if (!link) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: 'Link não encontrado' 
+        message: 'Link não encontrado'
       });
     }
 
     const jogadorIndex = link.jogadores.findIndex(j => j.id === jogadorId);
-    if (jogadorIndex >= 0) {
-      link.jogadores[jogadorIndex].presente = presente;
-      await link.save();
-
-      io.emit('presencaAtualizada', { jogadorId, presente });
-
-      res.json({ success: true });
-    } else {
-      res.status(404).json({ 
+    if (jogadorIndex === -1) {
+      return res.status(404).json({
         success: false,
-        message: 'Jogador não encontrado' 
+        message: 'Jogador não encontrado'
       });
     }
+
+    link.jogadores[jogadorIndex].presente = presente;
+    await link.save();
+
+    io.emit('presencaAtualizada', { jogadorId, presente });
+
+    res.json({ success: true });
   } catch (error) {
     console.error('Erro ao confirmar presença:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'Erro ao confirmar presença' 
+      message: 'Erro ao confirmar presença'
     });
   }
 });
+
 
 
 // Rota de saúde aprimorada 

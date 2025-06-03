@@ -21,3 +21,4 @@ const linkPresencaSchema = new mongoose.Schema({
 });
 
 module.exports = mongoose.model('LinkPresenca', linkPresencaSchema);
+

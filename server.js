@@ -283,6 +283,7 @@ app.post('/api/presenca/:linkId/confirmar', async (req, res) => {
       });
     }
 
+    // Encontra o jogador dentro do array
     const jogadorIndex = link.jogadores.findIndex(j => j.id === jogadorId);
     if (jogadorIndex === -1) {
       return res.status(404).json({
@@ -291,9 +292,13 @@ app.post('/api/presenca/:linkId/confirmar', async (req, res) => {
       });
     }
 
+    // Atualiza a presença corretamente
     link.jogadores[jogadorIndex].presente = presente;
+
+    // Salva corretamente no MongoDB
     await link.save();
 
+    // Envia evento para outros clientes
     io.emit('presencaAtualizada', { jogadorId, presente });
 
     res.json({ success: true });
@@ -305,6 +310,7 @@ app.post('/api/presenca/:linkId/confirmar', async (req, res) => {
     });
   }
 });
+
 
 
 // Rota de saúde aprimorada 

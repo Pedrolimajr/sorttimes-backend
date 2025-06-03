@@ -277,39 +277,37 @@ app.post('/api/presenca/:linkId/confirmar', async (req, res) => {
     const link = await LinkPresenca.findOne({ linkId: req.params.linkId });
 
     if (!link) {
-      return res.status(404).json({
+      return res.status(404).json({ 
         success: false,
-        message: 'Link não encontrado'
+        message: 'Link não encontrado' 
       });
     }
 
-    // Encontra o jogador dentro do array
+    // Atualiza o jogador correto
     const jogadorIndex = link.jogadores.findIndex(j => j.id === jogadorId);
-    if (jogadorIndex === -1) {
-      return res.status(404).json({
+    if (jogadorIndex >= 0) {
+      link.jogadores[jogadorIndex].presente = presente;
+
+      await link.save(); // <- Importante!
+
+      io.emit('presencaAtualizada', { jogadorId, presente });
+
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ 
         success: false,
-        message: 'Jogador não encontrado'
+        message: 'Jogador não encontrado' 
       });
     }
-
-    // Atualiza a presença corretamente
-    link.jogadores[jogadorIndex].presente = presente;
-
-    // Salva corretamente no MongoDB
-    await link.save();
-
-    // Envia evento para outros clientes
-    io.emit('presencaAtualizada', { jogadorId, presente });
-
-    res.json({ success: true });
   } catch (error) {
     console.error('Erro ao confirmar presença:', error);
-    res.status(500).json({
+    res.status(500).json({ 
       success: false,
-      message: 'Erro ao confirmar presença'
+      message: 'Erro ao confirmar presença' 
     });
   }
 });
+
 
 
 

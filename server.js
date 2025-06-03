@@ -307,7 +307,6 @@ app.post('/api/presenca/:linkId/confirmar', async (req, res) => {
 });
 
 
-
 // Rota de saúde aprimorada 
 app.get('/api/health', async (req, res) => {
   const dbStatus = mongoose.connection.readyState;

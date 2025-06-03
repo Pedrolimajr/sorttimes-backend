@@ -282,9 +282,8 @@ app.post('/api/presenca/:linkId/confirmar', async (req, res) => {
       });
     }
 
-    // ⚠ Aqui está o erro que você provavelmente tinha: atualização não aplicada corretamente
     const jogadorIndex = link.jogadores.findIndex(j => j.id === jogadorId);
-    
+
     if (jogadorIndex === -1) {
       return res.status(404).json({
         success: false,
@@ -292,13 +291,15 @@ app.post('/api/presenca/:linkId/confirmar', async (req, res) => {
       });
     }
 
-    // ✅ Atualiza diretamente no array
+    // Atualiza o jogador
     link.jogadores[jogadorIndex].presente = presente;
 
-    // ✅ Agora salva corretamente no banco
+    // 🛠️ IMPORTANTE: informar que o campo foi modificado
+    link.markModified('jogadores');
+
+    // Agora sim ele salva
     await link.save();
 
-    // ✅ Emite para todos os sockets conectados
     io.emit('presencaAtualizada', { jogadorId, presente });
 
     res.json({ success: true });
@@ -310,8 +311,6 @@ app.post('/api/presenca/:linkId/confirmar', async (req, res) => {
     });
   }
 });
-
-
 
 
 

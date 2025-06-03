@@ -269,10 +269,6 @@ app.get('/api/presenca/:linkId', async (req, res) => {
   }
 });
 
-
-
-const LinkPresenca = require('./models/LinkPresenca');
-
 app.post('/api/presenca/:linkId/confirmar', async (req, res) => {
   try {
     const { jogadorId, presente } = req.body;

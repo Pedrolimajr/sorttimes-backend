@@ -271,42 +271,50 @@ app.get('/api/presenca/:linkId', async (req, res) => {
 
 
 
+const LinkPresenca = require('./models/LinkPresenca');
+
 app.post('/api/presenca/:linkId/confirmar', async (req, res) => {
   try {
     const { jogadorId, presente } = req.body;
+
     const link = await LinkPresenca.findOne({ linkId: req.params.linkId });
 
     if (!link) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: 'Link não encontrado' 
+        message: 'Link não encontrado'
       });
     }
 
-    // Atualiza o jogador correto
+    // ⚠ Aqui está o erro que você provavelmente tinha: atualização não aplicada corretamente
     const jogadorIndex = link.jogadores.findIndex(j => j.id === jogadorId);
-    if (jogadorIndex >= 0) {
-      link.jogadores[jogadorIndex].presente = presente;
-
-      await link.save(); // <- Importante!
-
-      io.emit('presencaAtualizada', { jogadorId, presente });
-
-      res.json({ success: true });
-    } else {
-      res.status(404).json({ 
+    
+    if (jogadorIndex === -1) {
+      return res.status(404).json({
         success: false,
-        message: 'Jogador não encontrado' 
+        message: 'Jogador não encontrado'
       });
     }
+
+    // ✅ Atualiza diretamente no array
+    link.jogadores[jogadorIndex].presente = presente;
+
+    // ✅ Agora salva corretamente no banco
+    await link.save();
+
+    // ✅ Emite para todos os sockets conectados
+    io.emit('presencaAtualizada', { jogadorId, presente });
+
+    res.json({ success: true });
   } catch (error) {
     console.error('Erro ao confirmar presença:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'Erro ao confirmar presença' 
+      message: 'Erro ao confirmar presença'
     });
   }
 });
+
 
 
 

@@ -71,18 +71,16 @@ router.get('/transacoes', async (req, res) => {
 // Rotas para transações
 router.post('/transacoes', async (req, res) => {
   try {
-    const { descricao, valor, tipo, categoria, data, jogadorId, jogadorNome } = req.body;
-    
-    if (!descricao || !valor || !tipo || !data) {
+    const { descricao, valor, tipo, categoria, data, jogadorId, jogadorNome, isento } = req.body;
+
+    if (!descricao || valor === undefined || !tipo || !data) {
       return res.status(400).json({ 
         success: false,
         message: 'Campos obrigatórios faltando' 
       });
     }
 
-    // Corrige o problema da data
     const dataCorrigida = new Date(data);
-    // Ajusta para o fuso horário local
     dataCorrigida.setMinutes(dataCorrigida.getMinutes() + dataCorrigida.getTimezoneOffset());
 
     const novaTransacao = new Transacao({
@@ -90,18 +88,20 @@ router.post('/transacoes', async (req, res) => {
       valor: parseFloat(valor),
       tipo,
       categoria: categoria || (tipo === 'receita' ? 'mensalidade' : 'outros'),
-      data: dataCorrigida, // Usa a data corrigida
+      data: dataCorrigida,
       jogadorId: tipo === 'receita' ? jogadorId : undefined,
-      jogadorNome: tipo === 'receita' ? jogadorNome : undefined
+      jogadorNome: tipo === 'receita' ? jogadorNome : undefined,
+      isento: !!isento
     });
 
     await novaTransacao.save();
-    
+
     res.status(201).json({
       success: true,
       data: novaTransacao
     });
   } catch (error) {
+    console.error(error);
     res.status(500).json({
       success: false,
       message: 'Erro ao adicionar transação'

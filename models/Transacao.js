@@ -1,3 +1,4 @@
+// ✅ Atualização do schema para suportar "isento"
 const mongoose = require('mongoose');
 
 const transacaoSchema = new mongoose.Schema({
@@ -8,12 +9,12 @@ const transacaoSchema = new mongoose.Schema({
   data: { type: Date, required: true, default: Date.now },
   jogadorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Jogador' },
   jogadorNome: { type: String },
+  isento: { type: Boolean, default: false }, // Adicionado para indicar transações isentas
   createdAt: { type: Date, default: Date.now }
 }, {
   timestamps: true
 });
 
-// Indexes para melhor performance
 transacaoSchema.index({ data: 1 });
 transacaoSchema.index({ tipo: 1 });
 transacaoSchema.index({ jogadorId: 1 });

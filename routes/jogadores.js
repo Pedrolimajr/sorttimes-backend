@@ -431,7 +431,7 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Pagamento atualizado com sucesso',
+      message: isento ? 'Isenção registrada com sucesso' : 'Pagamento registrado com sucesso',
       data: {
         jogador: {
           _id: jogador._id,
@@ -439,10 +439,9 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
           pagamentos: jogador.pagamentos,
           statusFinanceiro: jogador.statusFinanceiro
         },
-        transacao: pago ? transacao : null
+        transacao
       }
     });
-
   } catch (error) {
     console.error('❌ Erro:', error);
     res.status(500).json({

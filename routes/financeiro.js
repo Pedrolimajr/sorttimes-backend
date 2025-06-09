@@ -9,11 +9,12 @@ router.get('/estatisticas', async (req, res) => {
     const { mes } = req.query;
     const year = mes ? mes.split('-')[0] : new Date().getFullYear();
     
-    // Calcula totais de receitas e despesas
+    // Calcula totais de receitas (ignorando isenções) e despesas
     const receitas = await Transacao.aggregate([
       { 
         $match: { 
           tipo: 'receita',
+          isento: { $ne: true }, // Ignora transações isentas
           data: { $regex: `^${year}` }
         } 
       },
@@ -82,19 +83,24 @@ router.post('/transacoes', async (req, res) => {
 
     // Corrige o problema da data
     const dataCorrigida = new Date(data);
-    // Ajusta para o fuso horário local
     dataCorrigida.setMinutes(dataCorrigida.getMinutes() + dataCorrigida.getTimezoneOffset());
 
-    const novaTransacao = new Transacao({
+    // Cria objeto de transação
+    const transacaoData = {
       descricao,
       valor: parseFloat(valor),
       tipo,
-      categoria: categoria || (tipo === 'receita' ? 'mensalidade' : 'outros'),
-      data: dataCorrigida, // Usa a data corrigida
-      jogadorId: tipo === 'receita' ? jogadorId : undefined,
-      jogadorNome: tipo === 'receita' ? jogadorNome : undefined
-    });
+      categoria: categoria || (tipo === 'receita' ? 'outros' : 'outros'), // Alterado para 'outros' como padrão
+      data: dataCorrigida
+    };
 
+    // Apenas adiciona jogadorId e jogadorNome se existirem e for receita
+    if (tipo === 'receita' && jogadorId) {
+      transacaoData.jogadorId = jogadorId;
+      transacaoData.jogadorNome = jogadorNome;
+    }
+
+    const novaTransacao = new Transacao(transacaoData);
     await novaTransacao.save();
     
     res.status(201).json({

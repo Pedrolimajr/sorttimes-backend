@@ -382,8 +382,9 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
     await jogador.save();
 
     // Registra a transação
+    let transacao = null; // Declare transacao here
     if (pago) {
-      const transacao = new Transacao({
+      transacao = new Transacao({ // Assign to the declared variable
         jogadorId,
         jogadorNome: jogador.nome,
         valor: valor || 100, // Valor padrão caso não seja informado
@@ -439,7 +440,7 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
           pagamentos: jogador.pagamentos,
           statusFinanceiro: jogador.statusFinanceiro
         },
-        transacao: pago ? transacao : null
+        transacao: transacao // Explicitly assign the transacao variable
       }
     });
 

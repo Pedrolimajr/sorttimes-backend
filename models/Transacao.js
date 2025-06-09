@@ -8,6 +8,7 @@ const transacaoSchema = new mongoose.Schema({
   data: { type: Date, required: true, default: Date.now },
   jogadorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Jogador' },
   jogadorNome: { type: String },
+  isento: { type: Boolean, default: false }, // Novo campo para isenção
   createdAt: { type: Date, default: Date.now }
 }, {
   timestamps: true

@@ -357,12 +357,16 @@ router.post('/sortear-times', async (req, res) => {
 });
 
 
+// ... (imports and other routes above)
+
+// Rota POST - Atualizar pagamento de jogador
 router.post('/:jogadorId/pagamentos', async (req, res) => {
   try {
     const { jogadorId } = req.params;
-    const { mes, pago, valor, dataPagamento } = req.body;
+    // Ensure 'isento' is destructured from req.body
+    const { mes, pago, valor, dataPagamento, isento } = req.body; 
     
-    console.log('📝 Dados recebidos:', { jogadorId, mes, pago, valor, dataPagamento });
+    console.log('📝 Dados recebidos:', { jogadorId, mes, pago, valor, dataPagamento, isento }); // Added isento to log
     
     // Busca o jogador
     const jogador = await Jogador.findById(jogadorId);
@@ -373,31 +377,40 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
       });
     }
 
-    // Atualiza o pagamento
+    // Validação básica do mês
+    if (mes === undefined || mes < 0 || mes > 11) {
+        return res.status(400).json({
+            success: false,
+            message: 'Mês inválido. Deve ser um índice entre 0 e 11.'
+        });
+    }
+
+    // Atualiza o pagamento no array do jogador
     if (!jogador.pagamentos) {
       jogador.pagamentos = Array(12).fill(false);
     }
     
-    jogador.pagamentos[mes] = pago;
+    jogador.pagamentos[mes] = pago; // 'pago' should be true/false
     await jogador.save();
 
-    // Registra a transação
-    let transacao = null; // Declare transacao here
-    if (pago) {
-      transacao = new Transacao({ // Assign to the declared variable
+    // Registra a transação APENAS se o pagamento foi marcado como 'pago' (ou isento)
+    // Se você está desmarcando um pagamento, não deve criar uma nova transação.
+    if (pago) { // This means the payment is being marked as true (paid or exempt)
+      const transacao = new Transacao({
         jogadorId,
         jogadorNome: jogador.nome,
-        valor: valor || 100, // Valor padrão caso não seja informado
+        valor: valor || 100, // Use the provided valor, or default to 100
         tipo: 'receita',
         categoria: 'mensalidade',
-        descricao: `Mensalidade - ${jogador.nome} (${mes + 1}/${new Date().getFullYear()})`,
+        descricao: `Mensalidade ${isento ? 'Isenta' : ''} - ${jogador.nome} (${mes + 1}/${new Date().getFullYear()})`,
         data: dataPagamento || new Date(),
-        status: 'confirmado'
+        status: 'confirmado',
+        isento: isento // <--- THIS IS THE CRITICAL ADDITION
       });
 
       await transacao.save();
       
-      // Recalcula estatísticas financeiras
+      // Recalcula estatísticas financeiras (assuming Transacao model has isento)
       const estatisticas = await Transacao.aggregate([
         {
           $group: {
@@ -440,17 +453,19 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
           pagamentos: jogador.pagamentos,
           statusFinanceiro: jogador.statusFinanceiro
         },
-        transacao: transacao // Explicitly assign the transacao variable
+        transacao: (pago && transacao) ? transacao : null // Return transacao only if it was created
       }
     });
 
   } catch (error) {
-    console.error('❌ Erro:', error);
+    console.error('❌ Erro no backend (jogadores.js /pagamentos):', error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Erro interno do servidor'
+      message: error.message || 'Erro interno do servidor ao processar pagamento'
     });
   }
 });
+
+
 
 module.exports = router;

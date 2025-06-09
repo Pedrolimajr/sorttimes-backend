@@ -363,78 +363,88 @@ router.post('/sortear-times', async (req, res) => {
 router.post('/:jogadorId/pagamentos', async (req, res) => {
   try {
     const { jogadorId } = req.params;
-    // Ensure 'isento' is destructured from req.body
-    const { mes, pago, valor, dataPagamento, isento } = req.body; 
-    
-    console.log('📝 Dados recebidos:', { jogadorId, mes, pago, valor, dataPagamento, isento }); // Added isento to log
-    
-    // Busca o jogador
-    const jogador = await Jogador.findById(jogadorId);
-    if (!jogador) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Jogador não encontrado' 
+    const { mes, pago, valor, dataPagamento, isento } = req.body;
+
+    console.log('📝 Dados recebidos:', { jogadorId, mes, pago, valor, dataPagamento, isento });
+
+    // Validações básicas
+    if (mes === undefined || mes < 0 || mes > 11) {
+      return res.status(400).json({
+        success: false,
+        message: 'Mês inválido. Deve ser um índice entre 0 e 11.'
       });
     }
 
-    // Validação básica do mês
-    if (mes === undefined || mes < 0 || mes > 11) {
-        return res.status(400).json({
-            success: false,
-            message: 'Mês inválido. Deve ser um índice entre 0 e 11.'
-        });
+    // Busca e valida jogador
+    const jogador = await Jogador.findById(jogadorId);
+    if (!jogador) {
+      return res.status(404).json({
+        success: false,
+        message: 'Jogador não encontrado'
+      });
     }
 
-    // Atualiza o pagamento no array do jogador
-    if (!jogador.pagamentos) {
+    // Inicializa array de pagamentos se necessário
+    if (!jogador.pagamentos || jogador.pagamentos.length !== 12) {
       jogador.pagamentos = Array(12).fill(false);
     }
-    
-    jogador.pagamentos[mes] = pago; // 'pago' should be true/false
-    await jogador.save();
 
-    // Registra a transação APENAS se o pagamento foi marcado como 'pago' (ou isento)
-    // Se você está desmarcando um pagamento, não deve criar uma nova transação.
-    if (pago) { // This means the payment is being marked as true (paid or exempt)
-      const transacao = new Transacao({
+    // Lógica principal de atualização
+    const novoStatus = pago || isento; // Marca como true se pago OU isento
+    const statusAnterior = jogador.pagamentos[mes];
+
+    // Atualiza apenas se houver mudança
+    if (novoStatus !== statusAnterior) {
+      jogador.pagamentos[mes] = novoStatus;
+
+      // Atualiza status financeiro
+      const mesAtual = new Date().getMonth();
+      const todosMesesPagos = jogador.pagamentos
+        .slice(0, mesAtual + 1)
+        .every(p => p);
+
+      jogador.statusFinanceiro = todosMesesPagos ? 'Adimplente' : 'Inadimplente';
+      await jogador.save();
+    }
+
+    // Lógica de transação
+    let transacao = null;
+    if (novoStatus && !statusAnterior) { // Se está marcando como pago/isento (não estava antes)
+      transacao = new Transacao({
         jogadorId,
         jogadorNome: jogador.nome,
-        valor: valor || 100, // Use the provided valor, or default to 100
+        valor: isento ? 0 : (valor || 100), // Zero se isento
         tipo: 'receita',
         categoria: 'mensalidade',
         descricao: `Mensalidade ${isento ? 'Isenta' : ''} - ${jogador.nome} (${mes + 1}/${new Date().getFullYear()})`,
         data: dataPagamento || new Date(),
-        status: 'confirmado',
-        isento: isento // <--- THIS IS THE CRITICAL ADDITION
+        isento: !!isento // Garante boolean
       });
 
       await transacao.save();
-      
-      // Recalcula estatísticas financeiras (assuming Transacao model has isento)
-      const estatisticas = await Transacao.aggregate([
-        {
-          $group: {
-            _id: null,
-            totalReceitas: {
-              $sum: { $cond: [{ $eq: ['$tipo', 'receita'] }, '$valor', 0] }
-            },
-            totalDespesas: {
-              $sum: { $cond: [{ $eq: ['$tipo', 'despesa'] }, '$valor', 0] }
-            }
-          }
-        }
-      ]);
 
-      // Emite eventos via Socket.IO
+      // Atualiza estatísticas via Socket.IO
       const io = req.app.get('io');
       if (io) {
+        const estatisticas = await Transacao.aggregate([
+          { $match: { isento: { $ne: true } } }, // Ignora transações isentas
+          {
+            $group: {
+              _id: null,
+              totalReceitas: { $sum: { $cond: [{ $eq: ['$tipo', 'receita'] }, '$valor', 0] } }, // VÍRGULA REMOVIDA AQUI
+              totalDespesas: { $sum: { $cond: [{ $eq: ['$tipo', 'despesa'] }, '$valor', 0] } }
+            }
+          }
+        ]);
+
         io.emit('pagamentoAtualizado', {
           jogadorId,
           mes,
-          pago,
+          pago: novoStatus,
+          isento,
           statusFinanceiro: jogador.statusFinanceiro
         });
-        
+
         io.emit('atualizacaoFinanceira', {
           totalReceitas: estatisticas[0]?.totalReceitas || 0,
           totalDespesas: estatisticas[0]?.totalDespesas || 0,
@@ -445,7 +455,9 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Pagamento atualizado com sucesso',
+      message: isento ? 'Mensalidade isenta com sucesso' :
+        pago ? 'Pagamento registrado com sucesso' :
+          'Pagamento removido com sucesso',
       data: {
         jogador: {
           _id: jogador._id,
@@ -453,15 +465,16 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
           pagamentos: jogador.pagamentos,
           statusFinanceiro: jogador.statusFinanceiro
         },
-        transacao: (pago && transacao) ? transacao : null // Return transacao only if it was created
+        transacao
       }
     });
 
   } catch (error) {
-    console.error('❌ Erro no backend (jogadores.js /pagamentos):', error);
+    console.error('❌ Erro no backend:', error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Erro interno do servidor ao processar pagamento'
+      message: 'Erro interno do servidor',
+      error: error.message
     });
   }
 });

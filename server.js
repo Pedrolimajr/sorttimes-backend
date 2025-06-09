@@ -240,8 +240,6 @@ app.post('/api/gerar-link-presenca', async (req, res) => {
 });
 
 
-
-
 app.get('/api/presenca/:linkId', async (req, res) => {
   try {
     const link = await LinkPresenca.findOne({ linkId: req.params.linkId });

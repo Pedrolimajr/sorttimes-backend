@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Jogador = require('../models/Jogador');
-const Transacao = require('../models/Transacao'); // Ensure this is correctly imported
+const Transacao = require('../models/Transacao');
 const multer = require('multer');
 const { v2: cloudinary } = require('cloudinary');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
@@ -357,10 +357,10 @@ router.post('/sortear-times', async (req, res) => {
 });
 
 
+// ... (imports and other routes above)
+
 // Rota POST - Atualizar pagamento de jogador
 router.post('/:jogadorId/pagamentos', async (req, res) => {
-  // Declare transacao outside the if block
-  let transacao = null; 
   try {
     const { jogadorId } = req.params;
     // Ensure 'isento' is destructured from req.body
@@ -377,7 +377,7 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
       });
     }
 
-    // Basic month validation
+    // Validação básica do mês
     if (mes === undefined || mes < 0 || mes > 11) {
         return res.status(400).json({
             success: false,
@@ -385,17 +385,18 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
         });
     }
 
-    // Update payment in the player's array
+    // Atualiza o pagamento no array do jogador
     if (!jogador.pagamentos) {
       jogador.pagamentos = Array(12).fill(false);
     }
     
-    jogador.pagamentos[mes] = pago; // 'pago' should be true/false from frontend
+    jogador.pagamentos[mes] = pago; // 'pago' should be true/false
     await jogador.save();
 
-    // Register transaction ONLY if payment was marked as 'pago' (or exempt)
+    // Registra a transação APENAS se o pagamento foi marcado como 'pago' (ou isento)
+    // Se você está desmarcando um pagamento, não deve criar uma nova transação.
     if (pago) { // This means the payment is being marked as true (paid or exempt)
-      transacao = new Transacao({ // Assign to the declared variable
+      const transacao = new Transacao({
         jogadorId,
         jogadorNome: jogador.nome,
         valor: valor || 100, // Use the provided valor, or default to 100
@@ -404,12 +405,12 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
         descricao: `Mensalidade ${isento ? 'Isenta' : ''} - ${jogador.nome} (${mes + 1}/${new Date().getFullYear()})`,
         data: dataPagamento || new Date(),
         status: 'confirmado',
-        isento: isento // <--- THIS IS THE CRITICAL ADDITION, passing isento
+        isento: isento // <--- THIS IS THE CRITICAL ADDITION
       });
 
       await transacao.save();
       
-      // Recalculate financial statistics (assuming Transacao model has isento)
+      // Recalcula estatísticas financeiras (assuming Transacao model has isento)
       const estatisticas = await Transacao.aggregate([
         {
           $group: {
@@ -424,7 +425,7 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
         }
       ]);
 
-      // Emit Socket.IO events
+      // Emite eventos via Socket.IO
       const io = req.app.get('io');
       if (io) {
         io.emit('pagamentoAtualizado', {
@@ -452,7 +453,7 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
           pagamentos: jogador.pagamentos,
           statusFinanceiro: jogador.statusFinanceiro
         },
-        transacao: (pago && transacao) ? transacao : null // Return transacao only if it was created and pago is true
+        transacao: (pago && transacao) ? transacao : null // Return transacao only if it was created
       }
     });
 
@@ -464,5 +465,7 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
     });
   }
 });
+
+
 
 module.exports = router;

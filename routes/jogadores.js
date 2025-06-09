@@ -421,6 +421,20 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
         isento: !!isento // Garante boolean
       });
 
+      if (pago || isento) {
+  transacao = new Transacao({
+    jogadorId,
+    jogadorNome: jogador.nome,
+    valor: isento ? 0 : (valor || 100), // Zero se isento
+    tipo: 'receita',                    // Sempre receita
+    categoria: 'mensalidade',
+    descricao: `Mensalidade ${isento ? 'Isenta' : ''} - ${jogador.nome} (${mes + 1}/${new Date().getFullYear()})`,
+    data: dataPagamento || new Date(),
+    isento: !!isento                    // Garante que é boolean
+  });
+  await transacao.save();
+}
+
       await transacao.save();
 
       // Atualiza estatísticas via Socket.IO

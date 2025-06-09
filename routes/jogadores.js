@@ -410,33 +410,30 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
     // Lógica de transação
     let transacao = null;
     if (novoStatus && !statusAnterior) { // Se está marcando como pago/isento (não estava antes)
+      // Verifica se é uma isenção válida
+      if (isento && valor && valor !== 0) {
+        console.warn('Atenção: Tentativa de isenção com valor não-zero. Forçando valor para 0.');
+      }
+
       transacao = new Transacao({
         jogadorId,
         jogadorNome: jogador.nome,
-        valor: isento ? 0 : (valor || 100), // Zero se isento
+        valor: isento ? 0 : (valor || 100), // Garante valor zero para isenções
         tipo: 'receita',
         categoria: 'mensalidade',
         descricao: `Mensalidade ${isento ? 'Isenta' : ''} - ${jogador.nome} (${mes + 1}/${new Date().getFullYear()})`,
         data: dataPagamento || new Date(),
-        isento: !!isento // Garante boolean
+        isento: !!isento, // Garante que é boolean
+        status: 'confirmado' // Adicionado para consistência
       });
 
-      
-      if (pago || isento) {
-  transacao = new Transacao({
-    jogadorId,
-    jogadorNome: jogador.nome,
-    valor: isento ? 0 : (valor || 100), // Zero se isento
-    tipo: 'receita',                    // Sempre receita
-    categoria: 'mensalidade',
-    descricao: `Mensalidade ${isento ? 'Isenta' : ''} - ${jogador.nome} (${mes + 1}/${new Date().getFullYear()})`,
-    data: dataPagamento || new Date(),
-    isento: !!isento                    // Garante que é boolean
-  });
-  await transacao.save();
-}
-
-      await transacao.save();
+      try {
+        await transacao.save();
+        console.log(`Transação ${isento ? 'isenta' : 'regular'} criada para jogador ${jogador.nome}`);
+      } catch (error) {
+        console.error('Erro ao salvar transação:', error);
+        throw error;
+      }
 
       // Atualiza estatísticas via Socket.IO
       const io = req.app.get('io');
@@ -446,7 +443,7 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
           {
             $group: {
               _id: null,
-              totalReceitas: { $sum: { $cond: [{ $eq: ['$tipo', 'receita'] }, '$valor', 0] } }, // VÍRGULA REMOVIDA AQUI
+              totalReceitas: { $sum: { $cond: [{ $eq: ['$tipo', 'receita'] }, '$valor', 0] } },
               totalDespesas: { $sum: { $cond: [{ $eq: ['$tipo', 'despesa'] }, '$valor', 0] } }
             }
           }
@@ -471,8 +468,8 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
     res.json({
       success: true,
       message: isento ? 'Mensalidade isenta com sucesso' :
-        pago ? 'Pagamento registrado com sucesso' :
-          'Pagamento removido com sucesso',
+               pago ? 'Pagamento registrado com sucesso' :
+               'Pagamento removido com sucesso',
       data: {
         jogador: {
           _id: jogador._id,

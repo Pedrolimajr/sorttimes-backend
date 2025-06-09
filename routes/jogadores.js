@@ -365,6 +365,20 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
     const { jogadorId } = req.params;
     const { mes, pago, valor, dataPagamento, isento } = req.body;
 
+     // Validação da data
+    const dataPagamentoObj = dataPagamento ? new Date(dataPagamento) : new Date();
+    if (isNaN(dataPagamentoObj.getTime())) {
+      return res.status(400).json({ success: false, message: 'Data inválida' });
+    }
+
+    const mesDaData = dataPagamentoObj.getMonth();
+    if (mes !== undefined && mes !== mesDaData) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Mês informado não corresponde à data de pagamento' 
+      });
+    }
+
     console.log('📝 Dados recebidos:', { jogadorId, mes, pago, valor, dataPagamento, isento });
 
     // Validações básicas

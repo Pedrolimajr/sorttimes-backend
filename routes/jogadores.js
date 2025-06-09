@@ -421,6 +421,7 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
         isento: !!isento // Garante boolean
       });
 
+      
       if (pago || isento) {
   transacao = new Transacao({
     jogadorId,

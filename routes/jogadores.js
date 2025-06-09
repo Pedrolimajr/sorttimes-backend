@@ -397,6 +397,8 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
     if (novoStatus !== statusAnterior) {
       jogador.pagamentos[mes] = novoStatus;
 
+       // Adicione esta linha para garantir que o Mongoose reconheça a modificação
+    jogador.markModified('pagamentos');
       // Atualiza status financeiro
       const mesAtual = new Date().getMonth();
       const todosMesesPagos = jogador.pagamentos

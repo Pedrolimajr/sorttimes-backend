@@ -74,5 +74,17 @@ jogadorSchema.pre('save', function(next) {
   next();
 });
 
+// Adicione no schema:
+jogadorSchema.virtual('isentoMeses').get(function() {
+  const meses = {};
+  this.pagamentos.forEach((pago, index) => {
+    if (pago) {
+      // Aqui você precisaria verificar nas transações se é isento
+      // Ou manter a lógica no frontend como mostrado acima
+    }
+  });
+  return meses;
+});
+
 module.exports = mongoose.model('Jogador', jogadorSchema);
 

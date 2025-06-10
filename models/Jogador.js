@@ -97,12 +97,12 @@ jogadorSchema.pre('validate', function(next) {
   if (this.pagamentos) {
     const anoAtual = new Date().getFullYear();
     this.pagamentos = this.pagamentos.map((pagamento, index) => {
-      // Se for booleano ou não existir, cria novo objeto
+      // Se for booleano ou não existir, cria novo objeto desmarcado
       if (typeof pagamento === 'boolean' || !pagamento) {
         return {
-          pago: typeof pagamento === 'boolean' ? pagamento : false,
+          pago: false,
           isento: false,
-          dataPagamento: typeof pagamento === 'boolean' && pagamento ? new Date() : null,
+          dataPagamento: null,
           dataLimite: new Date(anoAtual, index, 20)
         };
       }

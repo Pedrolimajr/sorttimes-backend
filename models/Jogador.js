@@ -52,12 +52,20 @@ const jogadorSchema = new mongoose.Schema({
     type: String,
     required: false // Não obrigatório
   },
-  pagamentos: [{
-    pago: { type: Boolean, default: false },
-    isento: { type: Boolean, default: false },
-    dataPagamento: { type: Date },
-    dataLimite: { type: Date }
-  }],
+  pagamentos: {
+    type: [{
+      pago: { type: Boolean, default: false },
+      isento: { type: Boolean, default: false },
+      dataPagamento: { type: Date },
+      dataLimite: { type: Date }
+    }],
+    default: () => Array(12).fill().map(() => ({
+      pago: false,
+      isento: false,
+      dataPagamento: null,
+      dataLimite: null
+    }))
+  },
   statusFinanceiro: {
     type: String,
     enum: ['Adimplente', 'Inadimplente'],
@@ -69,16 +77,30 @@ const jogadorSchema = new mongoose.Schema({
 
 // Middleware pre-save para garantir valores padrão
 jogadorSchema.pre('save', function(next) {
-  // Garante que pagamentos sempre tenha 12 posições
+  // Garante que pagamentos sempre tenha 12 posições com a estrutura correta
   if (!this.pagamentos || this.pagamentos.length !== 12) {
     const anoAtual = new Date().getFullYear();
     this.pagamentos = Array(12).fill().map((_, index) => ({
       pago: false,
       isento: false,
       dataPagamento: null,
-      dataLimite: new Date(anoAtual, index, 20) // Define data limite como dia 20 de cada mês
+      dataLimite: new Date(anoAtual, index, 20)
     }));
   }
+
+  // Converte pagamentos booleanos para objetos se necessário
+  this.pagamentos = this.pagamentos.map((pagamento, index) => {
+    if (typeof pagamento === 'boolean') {
+      return {
+        pago: pagamento,
+        isento: false,
+        dataPagamento: pagamento ? new Date() : null,
+        dataLimite: new Date(new Date().getFullYear(), index, 20)
+      };
+    }
+    return pagamento;
+  });
+
   next();
 });
 

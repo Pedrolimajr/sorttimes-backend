@@ -399,113 +399,43 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
     const mesNome = new Date(2000, mesIndex).toLocaleString('pt-BR', { month: 'long' });
     const descricaoMensalidade = `Mensalidade ${mesNome.charAt(0).toUpperCase() + mesNome.slice(1)} - ${jogador.nome}`;
 
-    let transacao = await Transacao.findOne({
+    // Remove transação existente se houver
+    await Transacao.deleteOne({
       jogadorId: jogador._id,
-      tipo: 'receita',
       descricao: descricaoMensalidade
     });
 
-    if (pago && !isento) {
-      if (!transacao) {
-        transacao = new Transacao({
-          descricao: descricaoMensalidade,
-          valor: valorMensalidade,
-          tipo: 'receita',
-          categoria: 'mensalidade',
-          data: dataAtual,
-          jogadorId: jogador._id,
-          jogadorNome: jogador.nome,
-          isento: false
-        });
-      } else {
-        transacao.valor = valorMensalidade;
-        transacao.isento = false;
-        transacao.data = dataAtual;
-      }
+    // Cria nova transação se necessário
+    if (pago) {
+      const transacao = new Transacao({
+        descricao: descricaoMensalidade,
+        valor: isento ? 0 : valorMensalidade,
+        tipo: 'receita',
+        categoria: 'mensalidade',
+        data: dataAtual,
+        jogadorId: jogador._id,
+        jogadorNome: jogador.nome,
+        isento: isento
+      });
       await transacao.save();
-    } else if (isento) {
-      if (!transacao) {
-        transacao = new Transacao({
-          descricao: descricaoMensalidade,
-          valor: 0,
-          tipo: 'receita',
-          categoria: 'mensalidade',
-          data: dataAtual,
-          jogadorId: jogador._id,
-          jogadorNome: jogador.nome,
-          isento: true
-        });
-      } else {
-        transacao.valor = 0;
-        transacao.isento = true;
-        transacao.data = dataAtual;
-      }
-      await transacao.save();
-    } else if (transacao) {
-      await Transacao.deleteOne({ _id: transacao._id });
     }
-
-    await jogador.save();
 
     // Atualiza status financeiro
     const mesAtual = new Date().getMonth();
     const inadimplente = jogador.pagamentos.some((p, i) => {
-      if (i > mesAtual) return false;
-      if (p.isento) return false;
+      if (i > mesAtual) return false; // Ignora meses futuros
+      if (p.isento) return false; // Ignora meses isentos
       return !p.pago && dataAtual > p.dataLimite;
     });
     
     jogador.statusFinanceiro = inadimplente ? 'Inadimplente' : 'Adimplente';
     await jogador.save();
 
-    // Emite via socket
-    if (io) {
-      const estatisticas = await Transacao.aggregate([
-        {
-          $match: {
-            data: {
-              $gte: new Date(`${new Date().getFullYear()}-01-01T00:00:00.000Z`),
-              $lt: new Date(`${new Date().getFullYear() + 1}-01-01T00:00:00.000Z`)
-            }
-          }
-        },
-        {
-          $group: {
-            _id: null,
-            totalReceitas: {
-              $sum: {
-                $cond: [
-                  { $and: [{ $eq: ['$tipo', 'receita'] }, { $ne: ['$isento', true] }] },
-                  '$valor',
-                  0
-                ]
-              }
-            },
-            totalDespesas: {
-              $sum: {
-                $cond: [{ $eq: ['$tipo', 'despesa'] }, '$valor', 0]
-              }
-            }
-          }
-        }
-      ]);
-
-      io.emit('pagamentoAtualizado', {
-        jogadorId,
-        mes: mesIndex,
-        pago: jogador.pagamentos[mesIndex].pago,
-        isento: jogador.pagamentos[mesIndex].isento,
-        statusFinanceiro: jogador.statusFinanceiro,
-        dataPagamento: jogador.pagamentos[mesIndex].dataPagamento,
-        dataLimite: jogador.pagamentos[mesIndex].dataLimite
-      });
-
-      io.emit('atualizacaoFinanceira', {
-        totalReceitas: estatisticas[0]?.totalReceitas || 0,
-        totalDespesas: estatisticas[0]?.totalDespesas || 0,
-        saldo: (estatisticas[0]?.totalReceitas || 0) - (estatisticas[0]?.totalDespesas || 0)
-      });
-    }
+    // Busca a transação criada
+    const transacaoCriada = await Transacao.findOne({
+      jogadorId: jogador._id,
+      descricao: descricaoMensalidade
+    });
 
     res.json({
       success: true,
@@ -518,12 +448,18 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
           nome: jogador.nome,
           pagamentos: jogador.pagamentos,
           statusFinanceiro: jogador.statusFinanceiro
-        }
+        },
+        transacao: transacaoCriada
       }
     });
 
   } catch (error) {
-    handleError(res, error, 'Erro ao atualizar pagamento');
+    console.error('Erro ao atualizar pagamento:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao atualizar pagamento',
+      error: error.message
+    });
   }
 });
 

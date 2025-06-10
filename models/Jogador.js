@@ -52,10 +52,12 @@ const jogadorSchema = new mongoose.Schema({
     type: String,
     required: false // Não obrigatório
   },
-  pagamentos: {
-    type: [Boolean],
-    default: () => Array(12).fill(false)
-  },
+  pagamentos: [{
+    pago: { type: Boolean, default: false },
+    isento: { type: Boolean, default: false },
+    dataPagamento: { type: Date },
+    dataLimite: { type: Date }
+  }],
   statusFinanceiro: {
     type: String,
     enum: ['Adimplente', 'Inadimplente'],
@@ -69,20 +71,33 @@ const jogadorSchema = new mongoose.Schema({
 jogadorSchema.pre('save', function(next) {
   // Garante que pagamentos sempre tenha 12 posições
   if (!this.pagamentos || this.pagamentos.length !== 12) {
-    this.pagamentos = Array(12).fill({ pago: false, isento: false });
+    const anoAtual = new Date().getFullYear();
+    this.pagamentos = Array(12).fill().map((_, index) => ({
+      pago: false,
+      isento: false,
+      dataPagamento: null,
+      dataLimite: new Date(anoAtual, index, 20) // Define data limite como dia 20 de cada mês
+    }));
   }
   next();
 });
 
 // Atualiza o status financeiro antes de salvar
 jogadorSchema.pre('save', function(next) {
-  const mesAtual = new Date().getMonth(); // 0 para Jan, 11 para Dez
-  const pagamentosDoAno = this.pagamentos;
+  const mesAtual = new Date().getMonth();
+  const dataAtual = new Date();
 
   // Verifica se o jogador possui pagamentos pendentes até o mês atual
-  const inadimplente = pagamentosDoAno.some((pagamento, index) => {
-    // Considera inadimplente se o mês já passou ou é o mês atual e não está pago nem isento
-    return index <= mesAtual && !pagamento.pago && !pagamento.isento;
+  const inadimplente = this.pagamentos.some((pagamento, index) => {
+    if (index > mesAtual) return false; // Ignora meses futuros
+    
+    // Se estiver isento, não considera inadimplente
+    if (pagamento.isento) return false;
+    
+    // Se não estiver pago e a data atual for maior que a data limite, considera inadimplente
+    if (!pagamento.pago && dataAtual > pagamento.dataLimite) return true;
+    
+    return false;
   });
 
   this.statusFinanceiro = inadimplente ? 'Inadimplente' : 'Adimplente';

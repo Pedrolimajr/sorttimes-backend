@@ -378,23 +378,24 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
 
     // Garante que o array de pagamentos tenha 12 posições
     if (jogador.pagamentos.length !== 12) {
-      jogador.pagamentos = Array(12).fill({ pago: false, isento: false });
+      const anoAtual = new Date().getFullYear();
+      jogador.pagamentos = Array(12).fill().map((_, index) => ({
+        pago: false,
+        isento: false,
+        dataPagamento: null,
+        dataLimite: new Date(anoAtual, index, 20)
+      }));
     }
 
-    let novoStatusPagamento = jogador.pagamentos[mesIndex].pago;
-    let novoStatusIsencao = jogador.pagamentos[mesIndex].isento;
-
-    if (isento !== undefined) {
-      novoStatusIsencao = isento;
-      if (isento) novoStatusPagamento = false;
-    } else if (pago !== undefined) {
-      novoStatusPagamento = pago;
-      if (pago) novoStatusIsencao = false;
-    }
-
+    // Atualiza o status do pagamento
+    const dataAtual = new Date();
+    const dataLimite = new Date(new Date().getFullYear(), mesIndex, 20);
+    
     jogador.pagamentos[mesIndex] = {
-      pago: novoStatusPagamento,
-      isento: novoStatusIsencao
+      pago: pago || false,
+      isento: isento || false,
+      dataPagamento: pago ? dataAtual : null,
+      dataLimite: dataLimite
     };
 
     // Lógica da transação
@@ -407,14 +408,14 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
       descricao: descricaoMensalidade
     });
 
-    if (novoStatusPagamento && !novoStatusIsencao) {
+    if (pago && !isento) {
       if (!transacao) {
         transacao = new Transacao({
           descricao: descricaoMensalidade,
           valor: valorMensalidade,
           tipo: 'receita',
           categoria: 'mensalidade',
-          data: new Date(),
+          data: dataAtual,
           jogadorId: jogador._id,
           jogadorNome: jogador.nome,
           isento: false
@@ -422,16 +423,17 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
       } else {
         transacao.valor = valorMensalidade;
         transacao.isento = false;
+        transacao.data = dataAtual;
       }
       await transacao.save();
-    } else if (!novoStatusPagamento && novoStatusIsencao) {
+    } else if (isento) {
       if (!transacao) {
         transacao = new Transacao({
           descricao: descricaoMensalidade,
           valor: 0,
           tipo: 'receita',
           categoria: 'mensalidade',
-          data: new Date(),
+          data: dataAtual,
           jogadorId: jogador._id,
           jogadorNome: jogador.nome,
           isento: true
@@ -439,6 +441,7 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
       } else {
         transacao.valor = 0;
         transacao.isento = true;
+        transacao.data = dataAtual;
       }
       await transacao.save();
     } else if (transacao) {
@@ -449,9 +452,12 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
 
     // Atualiza status financeiro
     const mesAtual = new Date().getMonth();
-    const inadimplente = jogador.pagamentos.some((p, i) =>
-      i <= mesAtual && !p.pago && !p.isento
-    );
+    const inadimplente = jogador.pagamentos.some((p, i) => {
+      if (i > mesAtual) return false;
+      if (p.isento) return false;
+      return !p.pago && dataAtual > p.dataLimite;
+    });
+    
     jogador.statusFinanceiro = inadimplente ? 'Inadimplente' : 'Adimplente';
     await jogador.save();
 
@@ -492,7 +498,9 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
         mes: mesIndex,
         pago: jogador.pagamentos[mesIndex].pago,
         isento: jogador.pagamentos[mesIndex].isento,
-        statusFinanceiro: jogador.statusFinanceiro
+        statusFinanceiro: jogador.statusFinanceiro,
+        dataPagamento: jogador.pagamentos[mesIndex].dataPagamento,
+        dataLimite: jogador.pagamentos[mesIndex].dataLimite
       });
 
       io.emit('atualizacaoFinanceira', {

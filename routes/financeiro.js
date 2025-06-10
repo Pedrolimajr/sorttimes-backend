@@ -12,59 +12,91 @@ router.get('/estatisticas', async (req, res) => {
     // Calcula totais de receitas (ignorando isenções) e despesas
     const receitas = await Transacao.aggregate([
       { 
-        $match: { 
+       $match: {
           tipo: 'receita',
           isento: { $ne: true }, // Ignora transações isentas
-          data: { $regex: `^${year}` }
-        } 
+          data: {
+            $gte: new Date(`${year}-01-01T00:00:00.000Z`),
+            $lt: new Date(`${parseInt(year) + 1}-01-01T00:00:00.000Z`)
+          }
+        }
       },
       { $group: { _id: null, total: { $sum: '$valor' } } }
     ]);
-    
+
     const despesas = await Transacao.aggregate([
-      { 
-        $match: { 
+      {
+        $match: {
           tipo: 'despesa',
-          data: { $regex: `^${year}` }
-        } 
+          data: {
+            $gte: new Date(`${year}-01-01T00:00:00.000Z`),
+            $lt: new Date(`${parseInt(year) + 1}-01-01T00:00:00.000Z`)
+          }
+        }
       },
       { $group: { _id: null, total: { $sum: '$valor' } } }
     ]);
+
     
     // Calcula pagamentos pendentes
-    const jogadores = await Jogador.find({});
+ const jogadores = await Jogador.find({});
     const pagamentosPendentes = jogadores.reduce((total, jogador) => {
-      return total + jogador.pagamentos.filter(p => !p).length;
+      const mesAtual = new Date().getMonth(); // 0 para Jan, 11 para Dez
+      return total + jogador.pagamentos.filter((p, index) =>
+        index <= mesAtual && !p.pago && !p.isento
+      ).length;
     }, 0);
     
+    // Calcula o saldo
+    const totalReceitas = receitas.length > 0 ? receitas[0].total : 0;
+    const totalDespesas = despesas.length > 0 ? despesas[0].total : 0;
+    const saldo = totalReceitas - totalDespesas;
+
     res.json({
-      totalReceitas: receitas[0]?.total || 0,
-      totalDespesas: despesas[0]?.total || 0,
-      saldo: (receitas[0]?.total || 0) - (despesas[0]?.total || 0),
-      pagamentosPendentes,
-      totalJogadores: jogadores.length
+      success: true,
+      data: {
+        totalReceitas,
+        totalDespesas,
+        saldo,
+        pagamentosPendentes
+      }
     });
-    
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Erro ao calcular estatísticas' });
+    console.error('Erro ao buscar estatísticas financeiras:', error);
+    res.status(500).json({ success: false, message: 'Erro ao buscar estatísticas financeiras' });
   }
 });
 
 // Rota GET - Transações por mês
 router.get('/transacoes', async (req, res) => {
   try {
-    const { mes } = req.query;
-    const query = mes ? { data: { $regex: `^${mes}` } } : {};
-    
-    const transacoes = await Transacao.find(query)
-      .sort({ data: -1 })
-      .lean();
-    
-    res.json(transacoes);
+    const { mes, tipo, categoria, jogadorId } = req.query;
+    let query = {};
+
+    if (mes) {
+      const [year, month] = mes.split('-');
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0); // Último dia do mês
+      query.data = { $gte: startDate, $lte: endDate };
+    }
+
+    if (tipo) {
+      query.tipo = tipo;
+    }
+
+    if (categoria) {
+      query.categoria = categoria;
+    }
+
+    if (jogadorId) {
+      query.jogadorId = jogadorId;
+    }
+
+    const transacoes = await Transacao.find(query).sort({ data: -1 });
+    res.json({ success: true, data: transacoes });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Erro ao buscar transações' });
+    console.error('Erro ao buscar transações:', error);
+    res.status(500).json({ success: false, message: 'Erro ao buscar transações' });
   }
 });
 
@@ -72,16 +104,9 @@ router.get('/transacoes', async (req, res) => {
 // Rotas para transações
 router.post('/transacoes', async (req, res) => {
   try {
-    const { descricao, valor, tipo, categoria, data, jogadorId, jogadorNome } = req.body;
-    
-    if (!descricao || !valor || !tipo || !data) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'Campos obrigatórios faltando' 
-      });
-    }
+    const { descricao, valor, tipo, categoria, data, jogadorId, jogadorNome, isento } = req.body;
 
-    // Corrige o problema da data
+    // Ajuste da data para lidar com fusos horários
     const dataCorrigida = new Date(data);
     dataCorrigida.setMinutes(dataCorrigida.getMinutes() + dataCorrigida.getTimezoneOffset());
 
@@ -90,8 +115,9 @@ router.post('/transacoes', async (req, res) => {
       descricao,
       valor: parseFloat(valor),
       tipo,
-      categoria: categoria || (tipo === 'receita' ? 'outros' : 'outros'), // Alterado para 'outros' como padrão
-      data: dataCorrigida
+      categoria: categoria || (tipo === 'receita' ? 'mensalidade' : 'outros'), // Categoria padrão
+      data: dataCorrigida,
+      isento: isento || false // Define isento
     };
 
     // Apenas adiciona jogadorId e jogadorNome se existirem e for receita
@@ -102,12 +128,13 @@ router.post('/transacoes', async (req, res) => {
 
     const novaTransacao = new Transacao(transacaoData);
     await novaTransacao.save();
-    
+
     res.status(201).json({
       success: true,
       data: novaTransacao
     });
   } catch (error) {
+    console.error('Erro ao adicionar transação:', error);
     res.status(500).json({
       success: false,
       message: 'Erro ao adicionar transação'
@@ -125,8 +152,10 @@ router.delete('/transacoes/:id', async (req, res) => {
     }
     res.json({ success: true, message: 'Transação removida com sucesso' });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Erro ao deletar transação' });
+    console.error('Erro ao remover transação:', error);
+    res.status(500).json({ success: false, message: 'Erro ao remover transação' });
   }
 });
+
 module.exports = router;
 

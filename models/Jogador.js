@@ -69,21 +69,24 @@ const jogadorSchema = new mongoose.Schema({
 jogadorSchema.pre('save', function(next) {
   // Garante que pagamentos sempre tenha 12 posições
   if (!this.pagamentos || this.pagamentos.length !== 12) {
-    this.pagamentos = Array(12).fill(false);
+    this.pagamentos = Array(12).fill({ pago: false, isento: false });
   }
   next();
 });
 
-// Adicione no schema:
-jogadorSchema.virtual('isentoMeses').get(function() {
-  const meses = {};
-  this.pagamentos.forEach((pago, index) => {
-    if (pago) {
-      // Aqui você precisaria verificar nas transações se é isento
-      // Ou manter a lógica no frontend como mostrado acima
-    }
+// Atualiza o status financeiro antes de salvar
+jogadorSchema.pre('save', function(next) {
+  const mesAtual = new Date().getMonth(); // 0 para Jan, 11 para Dez
+  const pagamentosDoAno = this.pagamentos;
+
+  // Verifica se o jogador possui pagamentos pendentes até o mês atual
+  const inadimplente = pagamentosDoAno.some((pagamento, index) => {
+    // Considera inadimplente se o mês já passou ou é o mês atual e não está pago nem isento
+    return index <= mesAtual && !pagamento.pago && !pagamento.isento;
   });
-  return meses;
+
+  this.statusFinanceiro = inadimplente ? 'Inadimplente' : 'Adimplente';
+  next();
 });
 
 module.exports = mongoose.model('Jogador', jogadorSchema);

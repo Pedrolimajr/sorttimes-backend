@@ -360,10 +360,10 @@ router.post('/sortear-times', async (req, res) => {
 // ... (imports and other routes above)
 
 // Rota POST - Atualizar pagamento de jogador
-router.post('/:jogadorId/pagamentos/:mes', async (req, res) => {
-  const { jogadorId, mes } = req.params; // mês é 0-indexed
-  const { pago, isento, valorMensalidade } = req.body;
-  const io = req.app.get('socketio'); // Acessa a instância do Socket.IO
+router.post('/:jogadorId/pagamentos', async (req, res) => {
+  const { jogadorId } = req.params;
+  const { mes, pago, isento, valorMensalidade } = req.body;
+  const io = req.app.get('socketio');
 
   try {
     const jogador = await Jogador.findById(jogadorId);
@@ -386,16 +386,10 @@ router.post('/:jogadorId/pagamentos/:mes', async (req, res) => {
 
     if (isento !== undefined) {
       novoStatusIsencao = isento;
-      // Se isentar, desmarca como pago. Se desmarcar isenção, não altera o status de pago.
-      if (isento) {
-        novoStatusPagamento = false;
-      }
+      if (isento) novoStatusPagamento = false;
     } else if (pago !== undefined) {
       novoStatusPagamento = pago;
-      // Se pagar, desmarca como isento. Se desmarcar pagamento, não altera o status de isento.
-      if (pago) {
-        novoStatusIsencao = false;
-      }
+      if (pago) novoStatusIsencao = false;
     }
 
     jogador.pagamentos[mesIndex] = {
@@ -403,18 +397,17 @@ router.post('/:jogadorId/pagamentos/:mes', async (req, res) => {
       isento: novoStatusIsencao
     };
 
-    // Lógica para criar/remover transação financeira
+    // Lógica da transação
     const mesNome = new Date(2000, mesIndex).toLocaleString('pt-BR', { month: 'long' });
     const descricaoMensalidade = `Mensalidade ${mesNome.charAt(0).toUpperCase() + mesNome.slice(1)} - ${jogador.nome}`;
 
-    if (novoStatusPagamento && !novoStatusIsencao) {
-      // Registrar pagamento se não for isento
-      let transacao = await Transacao.findOne({
-        jogadorId: jogador._id,
-        tipo: 'receita',
-        descricao: descricaoMensalidade
-      });
+    let transacao = await Transacao.findOne({
+      jogadorId: jogador._id,
+      tipo: 'receita',
+      descricao: descricaoMensalidade
+    });
 
+    if (novoStatusPagamento && !novoStatusIsencao) {
       if (!transacao) {
         transacao = new Transacao({
           descricao: descricaoMensalidade,
@@ -426,24 +419,16 @@ router.post('/:jogadorId/pagamentos/:mes', async (req, res) => {
           jogadorNome: jogador.nome,
           isento: false
         });
-        await transacao.save();
       } else {
-        // Se já existe, apenas atualiza para garantir que não é isenta
+        transacao.valor = valorMensalidade;
         transacao.isento = false;
-        await transacao.save();
       }
+      await transacao.save();
     } else if (!novoStatusPagamento && novoStatusIsencao) {
-      // Registrar isenção
-      let transacao = await Transacao.findOne({
-        jogadorId: jogador._id,
-        tipo: 'receita',
-        descricao: descricaoMensalidade
-      });
-
       if (!transacao) {
         transacao = new Transacao({
           descricao: descricaoMensalidade,
-          valor: 0, // Valor 0 para transações isentas
+          valor: 0,
           tipo: 'receita',
           categoria: 'mensalidade',
           data: new Date(),
@@ -451,39 +436,30 @@ router.post('/:jogadorId/pagamentos/:mes', async (req, res) => {
           jogadorNome: jogador.nome,
           isento: true
         });
-        await transacao.save();
       } else {
-        // Se já existe, atualiza para ser isenta e valor 0
         transacao.valor = 0;
         transacao.isento = true;
-        await transacao.save();
       }
-    } else {
-      // Remover transação se não estiver pago nem isento
-      await Transacao.deleteOne({
-        jogadorId: jogador._id,
-        tipo: 'receita',
-        descricao: descricaoMensalidade
-      });
+      await transacao.save();
+    } else if (transacao) {
+      await Transacao.deleteOne({ _id: transacao._id });
     }
 
-    await jogador.save(); // Salva o jogador após as alterações de pagamento/isenção
+    await jogador.save();
 
-    // Recalcula o status financeiro do jogador
+    // Atualiza status financeiro
     const mesAtual = new Date().getMonth();
-    const inadimplente = jogador.pagamentos.some((pagamento, index) =>
-      index <= mesAtual && !pagamento.pago && !pagamento.isento
+    const inadimplente = jogador.pagamentos.some((p, i) =>
+      i <= mesAtual && !p.pago && !p.isento
     );
     jogador.statusFinanceiro = inadimplente ? 'Inadimplente' : 'Adimplente';
-    await jogador.save(); // Salva novamente para atualizar o status financeiro
+    await jogador.save();
 
-    // Emite eventos de Socket.IO
+    // Emite via socket
     if (io) {
-      // Recalcula as estatísticas financeiras gerais
       const estatisticas = await Transacao.aggregate([
         {
           $match: {
-            // Inclui todas as transações, mas o cálculo final de receita vai ignorar as isentas
             data: {
               $gte: new Date(`${new Date().getFullYear()}-01-01T00:00:00.000Z`),
               $lt: new Date(`${new Date().getFullYear() + 1}-01-01T00:00:00.000Z`)
@@ -493,8 +469,20 @@ router.post('/:jogadorId/pagamentos/:mes', async (req, res) => {
         {
           $group: {
             _id: null,
-            totalReceitas: { $sum: { $cond: [{ $and: [{ $eq: ['$tipo', 'receita'] }, { $ne: ['$isento', true] }] }, '$valor', 0] } }, // Ignora transações isentas
-            totalDespesas: { $sum: { $cond: [{ $eq: ['$tipo', 'despesa'] }, '$valor', 0] } }
+            totalReceitas: {
+              $sum: {
+                $cond: [
+                  { $and: [{ $eq: ['$tipo', 'receita'] }, { $ne: ['$isento', true] }] },
+                  '$valor',
+                  0
+                ]
+              }
+            },
+            totalDespesas: {
+              $sum: {
+                $cond: [{ $eq: ['$tipo', 'despesa'] }, '$valor', 0]
+              }
+            }
           }
         }
       ]);
@@ -528,10 +516,12 @@ router.post('/:jogadorId/pagamentos/:mes', async (req, res) => {
         }
       }
     });
+
   } catch (error) {
     handleError(res, error, 'Erro ao atualizar pagamento');
   }
 });
+
 
 
 module.exports = router;

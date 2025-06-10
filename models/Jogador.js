@@ -93,19 +93,26 @@ const jogadorSchema = new mongoose.Schema({
 });
 
 // Middleware para garantir que pagamentos seja sempre um array de objetos
-jogadorSchema.pre('save', function(next) {
-  if (this.isModified('pagamentos')) {
+jogadorSchema.pre('validate', function(next) {
+  if (this.pagamentos) {
     const anoAtual = new Date().getFullYear();
     this.pagamentos = this.pagamentos.map((pagamento, index) => {
-      if (typeof pagamento === 'boolean') {
+      // Se for booleano ou não existir, cria novo objeto
+      if (typeof pagamento === 'boolean' || !pagamento) {
         return {
-          pago: pagamento,
+          pago: typeof pagamento === 'boolean' ? pagamento : false,
           isento: false,
-          dataPagamento: pagamento ? new Date() : null,
+          dataPagamento: typeof pagamento === 'boolean' && pagamento ? new Date() : null,
           dataLimite: new Date(anoAtual, index, 20)
         };
       }
-      return pagamento;
+      // Se já for objeto, mantém os valores existentes
+      return {
+        pago: pagamento.pago || false,
+        isento: pagamento.isento || false,
+        dataPagamento: pagamento.dataPagamento || null,
+        dataLimite: pagamento.dataLimite || new Date(anoAtual, index, 20)
+      };
     });
   }
   next();
@@ -119,14 +126,8 @@ jogadorSchema.pre('save', function(next) {
   // Verifica se o jogador possui pagamentos pendentes até o mês atual
   const inadimplente = this.pagamentos.some((pagamento, index) => {
     if (index > mesAtual) return false; // Ignora meses futuros
-    
-    // Se estiver isento, não considera inadimplente
-    if (pagamento.isento) return false;
-    
-    // Se não estiver pago e a data atual for maior que a data limite, considera inadimplente
-    if (!pagamento.pago && dataAtual > pagamento.dataLimite) return true;
-    
-    return false;
+    if (pagamento.isento) return false; // Ignora meses isentos
+    return !pagamento.pago && dataAtual > pagamento.dataLimite;
   });
 
   this.statusFinanceiro = inadimplente ? 'Inadimplente' : 'Adimplente';

@@ -360,7 +360,6 @@ router.post('/sortear-times', async (req, res) => {
 router.post('/:jogadorId/pagamentos', async (req, res) => {
   const { jogadorId } = req.params;
   const { mes, pago, isento, valorMensalidade } = req.body;
-  const io = req.app.get('socketio');
 
   try {
     const jogador = await Jogador.findById(jogadorId);
@@ -374,7 +373,7 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
     }
 
     // Garante que o array de pagamentos tenha 12 posições
-    if (jogador.pagamentos.length !== 12) {
+    if (!jogador.pagamentos || jogador.pagamentos.length !== 12) {
       const anoAtual = new Date().getFullYear();
       jogador.pagamentos = Array(12).fill().map((_, index) => ({
         pago: false,
@@ -388,12 +387,16 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
     const dataAtual = new Date();
     const dataLimite = new Date(new Date().getFullYear(), mesIndex, 20);
     
-    jogador.pagamentos[mesIndex] = {
+    // Cria um novo objeto de pagamento
+    const novoPagamento = {
       pago: pago || false,
       isento: isento || false,
       dataPagamento: pago ? dataAtual : null,
       dataLimite: dataLimite
     };
+
+    // Atualiza o pagamento no array
+    jogador.pagamentos[mesIndex] = novoPagamento;
 
     // Lógica da transação
     const mesNome = new Date(2000, mesIndex).toLocaleString('pt-BR', { month: 'long' });
@@ -406,6 +409,7 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
     });
 
     // Cria nova transação se necessário
+    let transacaoCriada = null;
     if (pago) {
       const transacao = new Transacao({
         descricao: descricaoMensalidade,
@@ -417,25 +421,11 @@ router.post('/:jogadorId/pagamentos', async (req, res) => {
         jogadorNome: jogador.nome,
         isento: isento
       });
-      await transacao.save();
+      transacaoCriada = await transacao.save();
     }
 
-    // Atualiza status financeiro
-    const mesAtual = new Date().getMonth();
-    const inadimplente = jogador.pagamentos.some((p, i) => {
-      if (i > mesAtual) return false; // Ignora meses futuros
-      if (p.isento) return false; // Ignora meses isentos
-      return !p.pago && dataAtual > p.dataLimite;
-    });
-    
-    jogador.statusFinanceiro = inadimplente ? 'Inadimplente' : 'Adimplente';
+    // Salva o jogador
     await jogador.save();
-
-    // Busca a transação criada
-    const transacaoCriada = await Transacao.findOne({
-      jogadorId: jogador._id,
-      descricao: descricaoMensalidade
-    });
 
     res.json({
       success: true,

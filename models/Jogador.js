@@ -52,13 +52,12 @@ const jogadorSchema = new mongoose.Schema({
     type: String,
     required: false // Não obrigatório
   },
-  pagamentos: {
-  type: [{
-    pago: Boolean,
-    isento: Boolean,
-    dataPagamento: Date
-  }],
-  default: () => Array(12).fill({ pago: false, isento: false })
+ pagamentos: {
+    type: [{
+      pago: { type: Boolean, default: false },
+      isento: { type: Boolean, default: false }
+    }],
+    default: () => Array(12).fill({ pago: false, isento: false })
   },
   statusFinanceiro: {
     type: String,
@@ -69,24 +68,29 @@ const jogadorSchema = new mongoose.Schema({
   timestamps: true
 });
 
-jogadorSchema.methods.atualizarStatusFinanceiro = function() {
-  const mesAtual = new Date().getMonth();
+// Middleware pre-save para garantir valores padrão
+jogadorSchema.pre('save', function(next) {
+  // Garante que pagamentos sempre tenha 12 posições
+  if (!this.pagamentos || this.pagamentos.length !== 12) {
+    this.pagamentos = Array(12).fill({ pago: false, isento: false });
+  }
+  next();
+});
+
+// Atualiza o status financeiro antes de salvar
+jogadorSchema.pre('save', function(next) {
+  const mesAtual = new Date().getMonth(); // 0 para Jan, 11 para Dez
   const pagamentosDoAno = this.pagamentos;
-  
+
+  // Verifica se o jogador possui pagamentos pendentes até o mês atual
   const inadimplente = pagamentosDoAno.some((pagamento, index) => {
+    // Considera inadimplente se o mês já passou ou é o mês atual e não está pago nem isento
     return index <= mesAtual && !pagamento.pago && !pagamento.isento;
   });
 
   this.statusFinanceiro = inadimplente ? 'Inadimplente' : 'Adimplente';
-  return this.statusFinanceiro;
-};
-
-jogadorSchema.pre('save', function(next) {
-  if (!this.pagamentos || this.pagamentos.length !== 12) {
-    this.pagamentos = Array(12).fill({ pago: false, isento: false });
-  }
-  this.atualizarStatusFinanceiro();
   next();
 });
 
 module.exports = mongoose.model('Jogador', jogadorSchema);
+

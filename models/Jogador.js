@@ -9,52 +9,55 @@ const jogadorSchema = new mongoose.Schema({
   },
   dataNascimento: { 
     type: Date,
-    required: false // Não obrigatório
+    required: false
   },
   endereco: { 
     type: String,
-    required: false, // Não obrigatório
+    required: false,
     trim: true
   },
   telefone: { 
     type: String,
-    required: false // Não obrigatório
+    required: false
   },
   email: {
     type: String,
-    required: false, // Não obrigatório
+    required: false,
     lowercase: true,
-    sparse: true, // Permite múltiplos documentos sem email
-    unique: false // Remove a restrição de único
+    sparse: true,
+    unique: false
   },
   dataIngresso: {
     type: Date,
-    required: false, // Não obrigatório
+    required: false,
     default: Date.now
   },
   posicao: {
     type: String,
-    required: [true, 'Posição é obrigatória'], // Mantém obrigatório
+    required: [true, 'Posição é obrigatória'],
     enum: ['Goleiro', 'Defensor', 'Lateral-Esquerdo', 'Lateral-Direito', 
            'Volante', 'Meia-Direita', 'Meia-Esquerda', 'Centroavante']
   },
   numeroCamisa: {
     type: Number,
-    required: false // Não obrigatório
+    required: false
   },
   nivel: {
     type: String,
-    required: [true, 'Nível é obrigatório'], // Mantém obrigatório
+    required: [true, 'Nível é obrigatório'],
     enum: ['Associado', 'Convidado', 'Visitante'],
     default: 'Associado'
   },
   foto: {
     type: String,
-    required: false // Não obrigatório
+    required: false
   },
   pagamentos: {
-    type: [Boolean],
-    default: () => Array(12).fill(false)
+    type: [{
+      pago: { type: Boolean, default: false },
+      isento: { type: Boolean, default: false }
+    }],
+    default: () => Array(12).fill({ pago: false, isento: false })
   },
   statusFinanceiro: {
     type: String,
@@ -65,23 +68,18 @@ const jogadorSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Middleware pre-save para garantir valores padrão
+// Middleware para garantir que pagamentos tenha 12 meses
 jogadorSchema.pre('save', function(next) {
-  // Garante que pagamentos sempre tenha 12 posições
   if (!this.pagamentos || this.pagamentos.length !== 12) {
-    this.pagamentos = Array(12).fill({ pago: false, isento: false });
+    this.pagamentos = Array(12).fill().map(() => ({ pago: false, isento: false }));
   }
   next();
 });
 
-// Atualiza o status financeiro antes de salvar
+// Middleware para atualizar o status financeiro com base nos pagamentos
 jogadorSchema.pre('save', function(next) {
-  const mesAtual = new Date().getMonth(); // 0 para Jan, 11 para Dez
-  const pagamentosDoAno = this.pagamentos;
-
-  // Verifica se o jogador possui pagamentos pendentes até o mês atual
-  const inadimplente = pagamentosDoAno.some((pagamento, index) => {
-    // Considera inadimplente se o mês já passou ou é o mês atual e não está pago nem isento
+  const mesAtual = new Date().getMonth(); // 0 = Jan, 11 = Dez
+  const inadimplente = this.pagamentos.some((pagamento, index) => {
     return index <= mesAtual && !pagamento.pago && !pagamento.isento;
   });
 
@@ -90,4 +88,5 @@ jogadorSchema.pre('save', function(next) {
 });
 
 module.exports = mongoose.model('Jogador', jogadorSchema);
+
 

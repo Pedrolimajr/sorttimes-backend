@@ -52,17 +52,10 @@ const jogadorSchema = new mongoose.Schema({
     type: String,
     required: false // Não obrigatório
   },
-pagamentos: {
-  type: [
-    {
-      pago: { type: Boolean, default: false },
-      isento: { type: Boolean, default: false }
-    }
-  ],
-  default: () => Array.from({ length: 12 }, () => ({ pago: false, isento: false }))
-
-},
-
+  pagamentos: {
+    type: [Boolean],
+    default: () => Array(12).fill(false)
+  },
   statusFinanceiro: {
     type: String,
     enum: ['Adimplente', 'Inadimplente'],

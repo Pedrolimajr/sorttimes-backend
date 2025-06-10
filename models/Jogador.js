@@ -118,21 +118,5 @@ jogadorSchema.pre('validate', function(next) {
   next();
 });
 
-// Atualiza o status financeiro antes de salvar
-jogadorSchema.pre('save', function(next) {
-  const mesAtual = new Date().getMonth();
-  const dataAtual = new Date();
-
-  // Verifica se o jogador possui pagamentos pendentes até o mês atual
-  const inadimplente = this.pagamentos.some((pagamento, index) => {
-    if (index > mesAtual) return false; // Ignora meses futuros
-    if (pagamento.isento) return false; // Ignora meses isentos
-    return !pagamento.pago && dataAtual > pagamento.dataLimite;
-  });
-
-  this.statusFinanceiro = inadimplente ? 'Inadimplente' : 'Adimplente';
-  next();
-});
-
 module.exports = mongoose.model('Jogador', jogadorSchema);
 

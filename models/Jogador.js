@@ -1,5 +1,24 @@
 const mongoose = require('mongoose');
 
+const pagamentoSchema = new mongoose.Schema({
+  pago: {
+    type: Boolean,
+    default: false
+  },
+  isento: {
+    type: Boolean,
+    default: false
+  },
+  dataPagamento: {
+    type: Date,
+    default: null
+  },
+  dataLimite: {
+    type: Date,
+    required: true
+  }
+}, { _id: false });
+
 const jogadorSchema = new mongoose.Schema({
   nome: { 
     type: String, 
@@ -53,18 +72,16 @@ const jogadorSchema = new mongoose.Schema({
     required: false // Não obrigatório
   },
   pagamentos: {
-    type: [{
-      pago: { type: Boolean, default: false },
-      isento: { type: Boolean, default: false },
-      dataPagamento: { type: Date },
-      dataLimite: { type: Date }
-    }],
-    default: () => Array(12).fill().map(() => ({
-      pago: false,
-      isento: false,
-      dataPagamento: null,
-      dataLimite: null
-    }))
+    type: [pagamentoSchema],
+    default: () => {
+      const anoAtual = new Date().getFullYear();
+      return Array(12).fill().map((_, index) => ({
+        pago: false,
+        isento: false,
+        dataPagamento: null,
+        dataLimite: new Date(anoAtual, index, 20)
+      }));
+    }
   },
   statusFinanceiro: {
     type: String,
@@ -75,32 +92,22 @@ const jogadorSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Middleware pre-save para garantir valores padrão
+// Middleware para garantir que pagamentos seja sempre um array de objetos
 jogadorSchema.pre('save', function(next) {
-  // Garante que pagamentos sempre tenha 12 posições com a estrutura correta
-  if (!this.pagamentos || this.pagamentos.length !== 12) {
+  if (this.isModified('pagamentos')) {
     const anoAtual = new Date().getFullYear();
-    this.pagamentos = Array(12).fill().map((_, index) => ({
-      pago: false,
-      isento: false,
-      dataPagamento: null,
-      dataLimite: new Date(anoAtual, index, 20)
-    }));
+    this.pagamentos = this.pagamentos.map((pagamento, index) => {
+      if (typeof pagamento === 'boolean') {
+        return {
+          pago: pagamento,
+          isento: false,
+          dataPagamento: pagamento ? new Date() : null,
+          dataLimite: new Date(anoAtual, index, 20)
+        };
+      }
+      return pagamento;
+    });
   }
-
-  // Converte pagamentos booleanos para objetos se necessário
-  this.pagamentos = this.pagamentos.map((pagamento, index) => {
-    if (typeof pagamento === 'boolean') {
-      return {
-        pago: pagamento,
-        isento: false,
-        dataPagamento: pagamento ? new Date() : null,
-        dataLimite: new Date(new Date().getFullYear(), index, 20)
-      };
-    }
-    return pagamento;
-  });
-
   next();
 });
 

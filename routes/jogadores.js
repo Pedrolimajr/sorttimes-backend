@@ -472,36 +472,41 @@ router.post('/migrar-pagamentos', async (req, res) => {
     
     for (const jogador of jogadores) {
       try {
-        // Converte o array de booleanos para array de objetos
+        console.log(`Migrando jogador ${jogador._id}:`, jogador.pagamentos);
+        
+        // Força a conversão para array de objetos
         const pagamentosAtualizados = Array(12).fill().map((_, index) => {
           const pagamentoAtual = jogador.pagamentos[index];
+          console.log(`Mês ${index}:`, pagamentoAtual);
           
-          // Se for um booleano, converte para objeto
-          if (typeof pagamentoAtual === 'boolean') {
+          // Se for booleano ou não existir, cria novo objeto
+          if (typeof pagamentoAtual === 'boolean' || !pagamentoAtual) {
             return {
-              pago: pagamentoAtual,
+              pago: typeof pagamentoAtual === 'boolean' ? pagamentoAtual : false,
               isento: false,
-              dataPagamento: pagamentoAtual ? new Date() : null,
+              dataPagamento: typeof pagamentoAtual === 'boolean' && pagamentoAtual ? new Date() : null,
               dataLimite: new Date(anoAtual, index, 20)
             };
           }
           
-          // Se já for um objeto, mantém os valores existentes ou usa os padrões
+          // Se já for objeto, mantém os valores existentes
           return {
-            pago: pagamentoAtual?.pago || false,
-            isento: pagamentoAtual?.isento || false,
-            dataPagamento: pagamentoAtual?.dataPagamento || null,
-            dataLimite: pagamentoAtual?.dataLimite || new Date(anoAtual, index, 20)
+            pago: pagamentoAtual.pago || false,
+            isento: pagamentoAtual.isento || false,
+            dataPagamento: pagamentoAtual.dataPagamento || null,
+            dataLimite: pagamentoAtual.dataLimite || new Date(anoAtual, index, 20)
           };
         });
 
         // Atualiza o jogador com os novos pagamentos
         jogador.pagamentos = pagamentosAtualizados;
         await jogador.save();
+        
+        console.log(`Jogador ${jogador._id} atualizado:`, jogador.pagamentos);
         jogadoresAtualizados++;
       } catch (error) {
         console.error(`Erro ao migrar jogador ${jogador._id}:`, error);
-        continue; // Continua com o próximo jogador mesmo se houver erro
+        continue;
       }
     }
 

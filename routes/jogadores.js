@@ -532,30 +532,47 @@ router.post('/migrar-pagamentos', async (req, res) => {
   try {
     const jogadores = await Jogador.find({});
     const anoAtual = new Date().getFullYear();
+    let jogadoresAtualizados = 0;
     
     for (const jogador of jogadores) {
-      // Converte o array de booleanos para array de objetos
-      const pagamentosAtualizados = Array(12).fill().map((_, index) => {
-        const pagamentoAtual = jogador.pagamentos[index];
-        return {
-          pago: typeof pagamentoAtual === 'boolean' ? pagamentoAtual : pagamentoAtual?.pago || false,
-          isento: typeof pagamentoAtual === 'boolean' ? false : pagamentoAtual?.isento || false,
-          dataPagamento: typeof pagamentoAtual === 'boolean' ? 
-            (pagamentoAtual ? new Date() : null) : 
-            pagamentoAtual?.dataPagamento || null,
-          dataLimite: new Date(anoAtual, index, 20)
-        };
-      });
+      try {
+        // Converte o array de booleanos para array de objetos
+        const pagamentosAtualizados = Array(12).fill().map((_, index) => {
+          const pagamentoAtual = jogador.pagamentos[index];
+          
+          // Se for um booleano, converte para objeto
+          if (typeof pagamentoAtual === 'boolean') {
+            return {
+              pago: pagamentoAtual,
+              isento: false,
+              dataPagamento: pagamentoAtual ? new Date() : null,
+              dataLimite: new Date(anoAtual, index, 20)
+            };
+          }
+          
+          // Se já for um objeto, mantém os valores existentes ou usa os padrões
+          return {
+            pago: pagamentoAtual?.pago || false,
+            isento: pagamentoAtual?.isento || false,
+            dataPagamento: pagamentoAtual?.dataPagamento || null,
+            dataLimite: pagamentoAtual?.dataLimite || new Date(anoAtual, index, 20)
+          };
+        });
 
-      // Atualiza o jogador com os novos pagamentos
-      jogador.pagamentos = pagamentosAtualizados;
-      await jogador.save();
+        // Atualiza o jogador com os novos pagamentos
+        jogador.pagamentos = pagamentosAtualizados;
+        await jogador.save();
+        jogadoresAtualizados++;
+      } catch (error) {
+        console.error(`Erro ao migrar jogador ${jogador._id}:`, error);
+        continue; // Continua com o próximo jogador mesmo se houver erro
+      }
     }
 
     res.json({
       success: true,
       message: 'Migração de pagamentos concluída com sucesso',
-      jogadoresAtualizados: jogadores.length
+      jogadoresAtualizados
     });
 
   } catch (error) {

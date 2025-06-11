@@ -356,100 +356,45 @@ router.post('/sortear-times', async (req, res) => {
   }
 });
 
-// Rota POST - Atualizar pagamento de jogador
-router.post('/:jogadorId/pagamentos', async (req, res) => {
-  const { jogadorId } = req.params;
-  const { mes, pago, isento, valorMensalidade } = req.body;
-
+// Rota POST - Atualizar pagamento
+router.post('/:id/pagamentos', async (req, res) => {
   try {
-    const jogador = await Jogador.findById(jogadorId);
+    const { id } = req.params;
+    const { mes, pago, isento } = req.body;
+
+    const jogador = await Jogador.findById(id);
     if (!jogador) {
       return res.status(404).json({ success: false, message: 'Jogador não encontrado' });
     }
 
-    const mesIndex = parseInt(mes, 10);
-    if (isNaN(mesIndex) || mesIndex < 0 || mesIndex > 11) {
-      return res.status(400).json({ success: false, message: 'Mês inválido' });
-    }
-
-    // Garante que o array de pagamentos tenha 12 posições
-    if (!jogador.pagamentos || jogador.pagamentos.length !== 12) {
-      const anoAtual = new Date().getFullYear();
-      jogador.pagamentos = Array(12).fill().map((_, index) => ({
-        pago: false,
-        isento: false,
-        dataPagamento: null,
-        dataLimite: new Date(anoAtual, index, 20)
-      }));
-    }
-
-    // Atualiza o status do pagamento
-    const dataAtual = new Date();
-    const dataLimite = new Date(new Date().getFullYear(), mesIndex, 20);
-    
-    // Cria um novo objeto de pagamento
-    const novoPagamento = {
-      pago: pago || false,
-      isento: isento || false,
-      dataPagamento: pago ? dataAtual : null,
-      dataLimite: dataLimite
+    // Atualiza o pagamento
+    jogador.pagamentos[mes] = {
+      pago,
+      isento,
+      dataPagamento: pago ? new Date() : null,
+      dataLimite: new Date(new Date().getFullYear(), mes, 20)
     };
 
-    // Atualiza o pagamento no array
-    jogador.pagamentos[mesIndex] = novoPagamento;
+    // Atualiza o status financeiro
+    const mesAtual = new Date().getMonth();
+    const todosMesesPagos = jogador.pagamentos
+      .slice(0, mesAtual + 1)
+      .every(p => p.pago || p.isento);
 
-    // Lógica da transação
-    const mesNome = new Date(2000, mesIndex).toLocaleString('pt-BR', { month: 'long' });
-    const descricaoMensalidade = `Mensalidade ${mesNome.charAt(0).toUpperCase() + mesNome.slice(1)} - ${jogador.nome}`;
+    jogador.statusFinanceiro = todosMesesPagos ? 'Adimplente' : 'Inadimplente';
 
-    // Remove transação existente se houver
-    await Transacao.deleteOne({
-      jogadorId: jogador._id,
-      descricao: descricaoMensalidade
-    });
-
-    // Cria nova transação se necessário
-    let transacaoCriada = null;
-    if (pago) {
-      const transacao = new Transacao({
-        descricao: descricaoMensalidade,
-        valor: isento ? 0 : valorMensalidade,
-        tipo: 'receita',
-        categoria: 'mensalidade',
-        data: dataAtual,
-        jogadorId: jogador._id,
-        jogadorNome: jogador.nome,
-        isento: isento
-      });
-      transacaoCriada = await transacao.save();
-    }
-
-    // Salva o jogador
     await jogador.save();
 
     res.json({
       success: true,
-      message: isento ? 'Mensalidade isenta com sucesso' :
-               pago ? 'Pagamento registrado com sucesso' :
-               'Pagamento removido com sucesso',
+      message: 'Pagamento atualizado com sucesso',
       data: {
-        jogador: {
-          _id: jogador._id,
-          nome: jogador.nome,
-          pagamentos: jogador.pagamentos,
-          statusFinanceiro: jogador.statusFinanceiro
-        },
-        transacao: transacaoCriada
+        jogador
       }
     });
-
   } catch (error) {
     console.error('Erro ao atualizar pagamento:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erro ao atualizar pagamento',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Erro ao atualizar pagamento' });
   }
 });
 

@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const auth = require('../middleware/auth');
 const Partida = require('../models/Partida');
+
+// Todas as rotas abaixo exigem autenticação
+router.use(auth);
 
 // Listar todas as partidas agendadas
 router.get('/', async (req, res) => {

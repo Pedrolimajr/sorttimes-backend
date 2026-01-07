@@ -1,6 +1,7 @@
 // routes/sorteioTimes.js
 const express = require('express');
 const router = express.Router();
+const auth = require('../middleware/auth');
 const Jogador = require('../models/Jogador');
 const multer = require('multer');
 const { v2: cloudinary } = require('cloudinary');
@@ -132,6 +133,9 @@ function distribuirMisto(jogadores, quantidadeTimes, posicoesEspecificas = {}) {
     return time.sort((a, b) => converterNivelParaNumero(b.nivel) - converterNivelParaNumero(a.nivel));
   });
 }
+
+// Todas as rotas abaixo exigem autenticação
+router.use(auth);
 
 // Middleware para validar ObjectId
 const validateObjectId = (req, res, next) => {

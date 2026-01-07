@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const auth = require('../middleware/auth');
 const Jogador = require('../models/Jogador');
 const Transacao = require('../models/Transacao');
 const multer = require('multer');
@@ -48,6 +49,9 @@ const validateObjectId = (req, res, next) => {
   }
   next();
 };
+
+// Todas as rotas abaixo exigem autenticação
+router.use(auth);
 
 // Rota POST - Cadastrar novo jogador
 router.post('/', upload.single('foto'), async (req, res) => {
@@ -100,12 +104,18 @@ router.post('/', upload.single('foto'), async (req, res) => {
 // Rota GET - Listar todos os jogadores com filtros
 router.get('/', async (req, res) => {
   try {
-    const { posicao, status, nome } = req.query;
+    const { posicao, status, nome, incluirInativos } = req.query;
     const filter = {};
     
     if (posicao) filter.posicao = posicao;
     if (status) filter.statusFinanceiro = status;
     if (nome) filter.nome = { $regex: nome, $options: 'i' };
+
+    // Por padrão, não retorna jogadores bloqueados (ativo === false).
+    // Quando incluirInativos === 'true', retorna todos.
+    if (incluirInativos !== 'true') {
+      filter.ativo = { $ne: false }; // Trata documentos antigos (sem campo ativo) como ativos
+    }
 
     const jogadores = await Jogador.find(filter)
       .sort({ nome: 1 })
@@ -223,6 +233,41 @@ router.patch('/:id/status', validateObjectId, async (req, res) => {
 
   } catch (error) {
     handleError(res, error, 'Erro ao atualizar status');
+  }
+});
+
+// Rota PATCH - Bloquear/Desbloquear jogador (ativo/inativo)
+router.patch('/:id/bloqueio', validateObjectId, async (req, res) => {
+  try {
+    const { ativo } = req.body;
+
+    if (typeof ativo !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'O campo "ativo" é obrigatório e deve ser booleano'
+      });
+    }
+
+    const jogador = await Jogador.findByIdAndUpdate(
+      req.params.id,
+      { ativo },
+      { new: true, runValidators: true }
+    ).select('-__v -createdAt -updatedAt');
+
+    if (!jogador) {
+      return res.status(404).json({
+        success: false,
+        message: 'Jogador não encontrado'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: ativo ? 'Jogador desbloqueado com sucesso' : 'Jogador bloqueado com sucesso',
+      data: jogador
+    });
+  } catch (error) {
+    handleError(res, error, 'Erro ao atualizar bloqueio');
   }
 });
 
@@ -367,16 +412,18 @@ router.post('/:id/pagamentos', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Jogador não encontrado' });
     }
 
+    const agoraSp = new Date(new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }));
+
     // Atualiza o pagamento
     jogador.pagamentos[mes] = {
       pago,
       isento,
-      dataPagamento: pago ? new Date() : null,
-      dataLimite: new Date(new Date().getFullYear(), mes, 20)
+      dataPagamento: pago ? agoraSp : null,
+      dataLimite: new Date(agoraSp.getFullYear(), mes, 20)
     };
 
     // Atualiza o status financeiro
-    const mesAtual = new Date().getMonth();
+    const mesAtual = agoraSp.getMonth();
     const todosMesesPagos = jogador.pagamentos
       .slice(0, mesAtual + 1)
       .every(p => p.pago || p.isento);

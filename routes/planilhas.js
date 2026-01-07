@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const auth = require('../middleware/auth');
 const mongoose = require('mongoose');
 const Planilha = require('../models/Planilha');
 // Middleware para headers CORS
@@ -9,6 +10,9 @@ router.use((req, res, next) => {
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   next();
 });
+
+// Todas as rotas abaixo exigem autenticação
+router.use(auth);
 
 // GET todas as planilhas
 router.get('/', async (req, res) => {

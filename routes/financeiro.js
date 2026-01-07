@@ -1,13 +1,24 @@
 const express = require('express');
 const router = express.Router();
+const auth = require('../middleware/auth');
 const Jogador = require('../models/Jogador');
 const Transacao = require('../models/Transacao'); // Você precisará criar este modelo
+
+// Helper de data para fuso America/Sao_Paulo
+const getNowInSaoPaulo = () => {
+  const now = new Date();
+  const spString = now.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  return new Date(spString);
+};
+
+// Todas as rotas abaixo exigem autenticação
+router.use(auth);
 
 // Rota GET - Estatísticas financeiras
 router.get('/estatisticas', async (req, res) => {
   try {
     const { mes } = req.query;
-    const year = mes ? mes.split('-')[0] : new Date().getFullYear();
+    const year = mes ? mes.split('-')[0] : getNowInSaoPaulo().getFullYear();
     
     // Calcula totais de receitas (ignorando isenções) e despesas
     const receitas = await Transacao.aggregate([
@@ -41,7 +52,7 @@ router.get('/estatisticas', async (req, res) => {
     // Calcula pagamentos pendentes
  const jogadores = await Jogador.find({});
     const pagamentosPendentes = jogadores.reduce((total, jogador) => {
-      const mesAtual = new Date().getMonth(); // 0 para Jan, 11 para Dez
+      const mesAtual = getNowInSaoPaulo().getMonth(); // 0 para Jan, 11 para Dez
       return total + jogador.pagamentos.filter((p, index) =>
         index <= mesAtual && !p.pago && !p.isento
       ).length;
@@ -106,9 +117,8 @@ router.post('/transacoes', async (req, res) => {
   try {
     const { descricao, valor, tipo, categoria, data, jogadorId, jogadorNome, isento } = req.body;
 
-    // Ajuste da data para lidar com fusos horários
+    // A data já deve vir normalizada do frontend (meio-dia em America/Sao_Paulo)
     const dataCorrigida = new Date(data);
-    dataCorrigida.setMinutes(dataCorrigida.getMinutes() + dataCorrigida.getTimezoneOffset());
 
     // Cria objeto de transação
     const transacaoData = {

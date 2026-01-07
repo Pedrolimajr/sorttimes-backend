@@ -71,6 +71,11 @@ const jogadorSchema = new mongoose.Schema({
     type: String,
     required: false // Não obrigatório
   },
+  // Controle de ativo/bloqueado: quando ativo === false, o jogador fica bloqueado/inativo
+  ativo: {
+    type: Boolean,
+    default: true
+  },
   pagamentos: {
     type: [pagamentoSchema],
     default: () => {

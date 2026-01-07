@@ -1,11 +1,18 @@
 const mongoose = require('mongoose');
 
+// Helper simples para "agora" no fuso America/Sao_Paulo
+const getNowInSaoPaulo = () => {
+  const now = new Date();
+  const spString = now.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  return new Date(spString);
+};
+
 const transacaoSchema = new mongoose.Schema({
   descricao: { type: String, required: true },
   valor: { type: Number, required: true, min: 0 },
   tipo: { type: String, required: true, enum: ['receita', 'despesa'] },
   categoria: { type: String },
-  data: { type: Date, required: true, default: Date.now },
+  data: { type: Date, required: true, default: getNowInSaoPaulo },
   dataLimite: { type: Date }, // Data limite para pagamento
   jogadorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Jogador' },
   jogadorNome: { type: String },
@@ -15,7 +22,7 @@ const transacaoSchema = new mongoose.Schema({
     enum: ['pendente', 'pago', 'atrasado', 'isento'],
     default: 'pendente'
   },
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: getNowInSaoPaulo }
 }, {
   timestamps: true
 });
@@ -23,7 +30,7 @@ const transacaoSchema = new mongoose.Schema({
 // Middleware para atualizar o status da transação
 transacaoSchema.pre('save', function(next) {
   if (this.tipo === 'receita' && this.categoria === 'mensalidade') {
-    const dataAtual = new Date();
+    const dataAtual = getNowInSaoPaulo();
     
     if (this.isento) {
       this.status = 'isento';

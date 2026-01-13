@@ -2,6 +2,9 @@ const jwt = require('jsonwebtoken');
 
 const auth = (req, res, next) => {
   try {
+    // Permite preflight (OPTIONS) passar sem autenticação para não bloquear CORS
+    if (req.method === 'OPTIONS') return next();
+
     const authHeader = req.header('Authorization');
     
     if (!authHeader) {

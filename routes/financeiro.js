@@ -148,8 +148,15 @@ router.post('/transacoes', async (req, res) => {
       }
     }
 
+    // Remover campos sensíveis/enviados indevidamente pelo cliente (ex.: createdAt inválido)
+    if (req.body.createdAt) delete req.body.createdAt;
+    if (req.body.updatedAt) delete req.body.updatedAt;
+
     // A data já deve vir normalizada do frontend (meio-dia em America/Sao_Paulo)
     const dataCorrigida = new Date(data);
+
+    // Forçar createdAt no servidor com horário de São Paulo para evitar 'Invalid Date'
+    const createdAtNow = getNowInSaoPaulo();
 
     // Cria objeto de transação
     const transacaoData = {
@@ -158,7 +165,8 @@ router.post('/transacoes', async (req, res) => {
       tipo,
       categoria: categoria || (tipo === 'receita' ? 'mensalidade' : 'outros'), // Categoria padrão
       data: dataCorrigida,
-      isento: Boolean(isento)
+      isento: Boolean(isento),
+      createdAt: createdAtNow
     };
 
     // Apenas adiciona jogadorId e jogadorNome se existirem e for receita

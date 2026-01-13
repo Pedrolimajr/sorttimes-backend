@@ -74,7 +74,7 @@ router.get('/estatisticas', async (req, res) => {
     });
   } catch (error) {
     console.error('Erro ao buscar estatísticas financeiras:', error);
-    res.status(500).json({ success: false, message: 'Erro ao buscar estatísticas financeiras' });
+    res.status(500).json({ success: false, message: process.env.NODE_ENV === 'production' ? 'Erro ao buscar estatísticas financeiras' : (error.message || 'Erro ao buscar estatísticas financeiras'), ...(process.env.NODE_ENV !== 'production' ? { stack: error.stack } : {}) });
   }
 });
 
@@ -107,7 +107,7 @@ router.get('/transacoes', async (req, res) => {
     res.json({ success: true, data: transacoes });
   } catch (error) {
     console.error('Erro ao buscar transações:', error);
-    res.status(500).json({ success: false, message: 'Erro ao buscar transações' });
+    res.status(500).json({ success: false, message: process.env.NODE_ENV === 'production' ? 'Erro ao buscar transações' : (error.message || 'Erro ao buscar transações'), ...(process.env.NODE_ENV !== 'production' ? { stack: error.stack } : {}) });
   }
 });
 
@@ -147,7 +147,8 @@ router.post('/transacoes', async (req, res) => {
     console.error('Erro ao adicionar transação:', error);
     res.status(500).json({
       success: false,
-      message: 'Erro ao adicionar transação'
+      message: process.env.NODE_ENV === 'production' ? 'Erro ao adicionar transação' : (error.message || 'Erro ao adicionar transação'),
+      ...(process.env.NODE_ENV !== 'production' ? { stack: error.stack } : {})
     });
   }
 });
@@ -163,7 +164,7 @@ router.delete('/transacoes/:id', async (req, res) => {
     res.json({ success: true, message: 'Transação removida com sucesso' });
   } catch (error) {
     console.error('Erro ao remover transação:', error);
-    res.status(500).json({ success: false, message: 'Erro ao remover transação' });
+    res.status(500).json({ success: false, message: process.env.NODE_ENV === 'production' ? 'Erro ao remover transação' : (error.message || 'Erro ao remover transação'), ...(process.env.NODE_ENV !== 'production' ? { stack: error.stack } : {}) });
   }
 });
 

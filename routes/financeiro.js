@@ -147,10 +147,56 @@ router.get('/transacoes', async (req, res) => {
   }
 });
 
+// Endpoint administrativo para corrigir todas as transações com `createdAt` ou `data` inválidos
+router.post('/transacoes/fix-dates', async (req, res) => {
+  try {
+    // Permitir execução apenas em ambiente de desenvolvimento (ou com token admin se desejar)
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(403).json({ success: false, message: 'Não permitido em produção' });
+    }
+
+    const transacoes = await Transacao.find();
+    const toFix = [];
+
+    transacoes.forEach(t => {
+      const obj = t.toObject ? t.toObject() : t;
+      let fixNeeded = false;
+      const updates = {};
+
+      if (!obj.data || isNaN(new Date(obj.data).getTime())) {
+        updates.data = new Date();
+        fixNeeded = true;
+      }
+      if (!obj.createdAt || isNaN(new Date(obj.createdAt).getTime())) {
+        updates.createdAt = new Date();
+        fixNeeded = true;
+      }
+
+      if (fixNeeded) {
+        toFix.push({ id: obj._id, updates });
+      }
+    });
+
+    await Promise.all(toFix.map(f => Transacao.updateOne({ _id: f.id }, { $set: f.updates })));
+
+    res.json({ success: true, fixed: toFix.length });
+  } catch (error) {
+    console.error('Erro ao rodar fix-dates:', error);
+    res.status(500).json({ success: false, message: error.message || 'Erro ao corrigir datas' });
+  }
+});
+  } catch (error) {
+    console.error('Erro ao buscar transações:', error);
+    res.status(500).json({ success: false, message: process.env.NODE_ENV === 'production' ? 'Erro ao buscar transações' : (error.message || 'Erro ao buscar transações'), ...(process.env.NODE_ENV !== 'production' ? { stack: error.stack } : {}) });
+  }
+});
+
 
 // Rotas para transações
 router.post('/transacoes', async (req, res) => {
   try {
+    console.log('POST /transacoes recebendo payload:', JSON.stringify(req.body));
+
     const { descricao, valor, tipo, categoria, data, jogadorId, jogadorNome, isento } = req.body;
 
     // Validações simples para evitar 500s por payload inválido
@@ -193,7 +239,7 @@ router.post('/transacoes', async (req, res) => {
     // Forçar createdAt no servidor com horário de São Paulo para evitar 'Invalid Date'
     const createdAtNow = getNowInSaoPaulo();
 
-    // Cria objeto de transação
+    // Cria objeto de transação. Não confie em qualquer createdAt vindo do client
     const transacaoData = {
       descricao: descricao.trim(),
       valor: valorNum,
@@ -210,8 +256,19 @@ router.post('/transacoes', async (req, res) => {
       transacaoData.jogadorNome = jogadorNome;
     }
 
+    console.log('Criando transacao com dados (após validação):', JSON.stringify({ ...transacaoData, data: transacaoData.data.toISOString(), createdAt: transacaoData.createdAt.toISOString() }));
+
     const novaTransacao = new Transacao(transacaoData);
-    await novaTransacao.save();
+    try {
+      await novaTransacao.save();
+    } catch (saveError) {
+      console.error('Erro no save da transacao:', saveError);
+      // se for validation error, propague detalhadamente
+      if (saveError && saveError.name === 'ValidationError') {
+        return res.status(400).json({ success: false, message: saveError.message, details: saveError.errors });
+      }
+      throw saveError;
+    }
 
     res.status(201).json({
       success: true,
@@ -220,7 +277,7 @@ router.post('/transacoes', async (req, res) => {
   } catch (error) {
     console.error('Erro ao adicionar transação:', error);
     // Retorna detalhes de validação/erro quando possível (evita 500 genérico sem contexto)
-    if (error.name === 'ValidationError') {
+    if (error && error.name === 'ValidationError') {
       return res.status(400).json({ success: false, message: error.message, details: error.errors });
     }
     res.status(500).json({

@@ -24,7 +24,8 @@ dotenv.config();
 // Debug para verificar as variáveis de ambiente
 console.log('Variáveis de ambiente carregadas:', {
   mongoUri: process.env.MONGO_URI ? 'Presente' : 'Ausente',
-  port: process.env.PORT
+  port: process.env.PORT,
+  jwtKey: process.env.JWT_PRIVATE_KEY ? 'Presente' : 'Ausente'
 });
 
 // Conexão com MongoDB

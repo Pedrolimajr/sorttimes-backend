@@ -32,6 +32,9 @@ router.post('/cadastro', async (req, res) => {
     });
 
     // Gera o token
+    if (!process.env.JWT_PRIVATE_KEY) {
+      throw new Error('JWT_PRIVATE_KEY não definido no servidor');
+    }
     const token = jwt.sign(
       { id: usuario._id },
       process.env.JWT_PRIVATE_KEY,
@@ -82,6 +85,9 @@ router.post('/login', async (req, res) => {
     }
 
     // Gera o token
+    if (!process.env.JWT_PRIVATE_KEY) {
+      throw new Error('JWT_PRIVATE_KEY não definido no servidor');
+    }
     const token = jwt.sign(
       { id: usuario._id },
       process.env.JWT_PRIVATE_KEY,

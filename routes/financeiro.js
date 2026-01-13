@@ -3,6 +3,7 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const Jogador = require('../models/Jogador');
 const Transacao = require('../models/Transacao'); // Você precisará criar este modelo
+const mongoose = require('mongoose');
 
 // Helper de data para fuso America/Sao_Paulo
 const getNowInSaoPaulo = () => {
@@ -117,17 +118,47 @@ router.post('/transacoes', async (req, res) => {
   try {
     const { descricao, valor, tipo, categoria, data, jogadorId, jogadorNome, isento } = req.body;
 
+    // Validações simples para evitar 500s por payload inválido
+    if (!descricao || typeof descricao !== 'string' || !descricao.trim()) {
+      return res.status(400).json({ success: false, message: 'Descrição é obrigatória' });
+    }
+
+    const valorNum = Number(valor);
+    if (!Number.isFinite(valorNum) || valorNum < 0) {
+      return res.status(400).json({ success: false, message: 'Valor inválido' });
+    }
+
+    if (!tipo || (tipo !== 'receita' && tipo !== 'despesa')) {
+      return res.status(400).json({ success: false, message: 'Tipo inválido' });
+    }
+
+    if (!data || isNaN(Date.parse(data))) {
+      return res.status(400).json({ success: false, message: 'Data inválida' });
+    }
+
+    if (jogadorId && !mongoose.Types.ObjectId.isValid(jogadorId)) {
+      return res.status(400).json({ success: false, message: 'jogadorId inválido' });
+    }
+
+    // Se for receita e houver jogadorId, verifique se o jogador existe
+    if (tipo === 'receita' && jogadorId) {
+      const jogador = await Jogador.findById(jogadorId);
+      if (!jogador) {
+        return res.status(404).json({ success: false, message: 'Jogador não encontrado' });
+      }
+    }
+
     // A data já deve vir normalizada do frontend (meio-dia em America/Sao_Paulo)
     const dataCorrigida = new Date(data);
 
     // Cria objeto de transação
     const transacaoData = {
-      descricao,
-      valor: parseFloat(valor),
+      descricao: descricao.trim(),
+      valor: valorNum,
       tipo,
       categoria: categoria || (tipo === 'receita' ? 'mensalidade' : 'outros'), // Categoria padrão
       data: dataCorrigida,
-      isento: isento || false // Define isento
+      isento: Boolean(isento)
     };
 
     // Apenas adiciona jogadorId e jogadorNome se existirem e for receita
@@ -145,6 +176,10 @@ router.post('/transacoes', async (req, res) => {
     });
   } catch (error) {
     console.error('Erro ao adicionar transação:', error);
+    // Retorna detalhes de validação/erro quando possível (evita 500 genérico sem contexto)
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({ success: false, message: error.message, details: error.errors });
+    }
     res.status(500).json({
       success: false,
       message: process.env.NODE_ENV === 'production' ? 'Erro ao adicionar transação' : (error.message || 'Erro ao adicionar transação'),

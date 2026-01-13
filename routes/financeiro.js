@@ -104,7 +104,42 @@ router.get('/transacoes', async (req, res) => {
       query.jogadorId = jogadorId;
     }
 
-    const transacoes = await Transacao.find(query).sort({ data: -1 });
+    const transacoesRaw = await Transacao.find(query).sort({ data: -1 });
+
+    // Normaliza e corrige transações com campos de data inválidos para evitar erros no cliente
+    const transacoes = transacoesRaw.map(t => t.toObject ? t.toObject() : t);
+    const toFix = [];
+
+    transacoes.forEach(tr => {
+      let needsFix = false;
+
+      // Valida 'data'
+      if (!tr.data || isNaN(new Date(tr.data).getTime())) {
+        tr.data = new Date().toISOString();
+        needsFix = true;
+      } else {
+        tr.data = new Date(tr.data).toISOString();
+      }
+
+      // Valida 'createdAt'
+      if (!tr.createdAt || isNaN(new Date(tr.createdAt).getTime())) {
+        tr.createdAt = new Date().toISOString();
+        needsFix = true;
+      } else {
+        tr.createdAt = new Date(tr.createdAt).toISOString();
+      }
+
+      if (needsFix) {
+        toFix.push({ id: tr._id, data: tr.data, createdAt: tr.createdAt });
+      }
+    });
+
+    if (toFix.length > 0) {
+      console.warn('Corrigindo transações com datas inválidas:', toFix.map(f => f.id));
+      // Atualiza os documentos no banco para evitar reocorrência do problema
+      await Promise.all(toFix.map(f => Transacao.updateOne({ _id: f.id }, { $set: { data: new Date(f.data), createdAt: new Date(f.createdAt) } })));
+    }
+
     res.json({ success: true, data: transacoes });
   } catch (error) {
     console.error('Erro ao buscar transações:', error);

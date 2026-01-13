@@ -206,11 +206,6 @@ router.post('/transacoes/fix-dates', async (req, res) => {
     res.status(500).json({ success: false, message: error.message || 'Erro ao corrigir datas' });
   }
 });
-  } catch (error) {
-    console.error('Erro ao buscar transações:', error);
-    res.status(500).json({ success: false, message: process.env.NODE_ENV === 'production' ? 'Erro ao buscar transações' : (error.message || 'Erro ao buscar transações'), ...(process.env.NODE_ENV !== 'production' ? { stack: error.stack } : {}) });
-  }
-});
 
 
 // Rotas para transações

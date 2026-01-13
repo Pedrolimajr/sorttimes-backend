@@ -1,10 +1,29 @@
 const mongoose = require('mongoose');
 
-// Helper simples para "agora" no fuso America/Sao_Paulo
+// Helper simples para "agora" no fuso America/Sao_Paulo (robusto)
 const getNowInSaoPaulo = () => {
-  const now = new Date();
-  const spString = now.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-  return new Date(spString);
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+
+  const parts = formatter.formatToParts(new Date());
+  const get = (type) => parts.find(p => p.type === type)?.value.padStart(2, '0');
+
+  const year = get('year');
+  const month = get('month');
+  const day = get('day');
+  const hour = get('hour');
+  const minute = get('minute');
+  const second = get('second');
+
+  return new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}`);
 };
 
 const transacaoSchema = new mongoose.Schema({
@@ -25,6 +44,28 @@ const transacaoSchema = new mongoose.Schema({
   createdAt: { type: Date, default: getNowInSaoPaulo }
 }, {
   timestamps: true
+});
+
+// Antes de validar, garante que datas sejam válidas (corrige strings inválidas como "Invalid Date")
+transacaoSchema.pre('validate', function(next) {
+  try {
+    if (!this.data || isNaN(new Date(this.data).getTime())) {
+      this.data = getNowInSaoPaulo();
+    } else {
+      this.data = new Date(this.data);
+    }
+
+    if (!this.createdAt || isNaN(new Date(this.createdAt).getTime())) {
+      this.createdAt = getNowInSaoPaulo();
+    } else {
+      this.createdAt = new Date(this.createdAt);
+    }
+  } catch (e) {
+    // Em caso de qualquer problema, garante valores padrão
+    this.data = getNowInSaoPaulo();
+    this.createdAt = getNowInSaoPaulo();
+  }
+  next();
 });
 
 // Middleware para atualizar o status da transação

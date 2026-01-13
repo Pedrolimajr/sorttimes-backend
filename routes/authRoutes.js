@@ -97,7 +97,7 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Erro no login:', error);
-    res.status(500).json({ message: 'Erro ao fazer login' });
+    res.status(500).json({ message: process.env.NODE_ENV === 'production' ? 'Erro ao fazer login' : (error.message || 'Erro ao fazer login'), ...(process.env.NODE_ENV !== 'production' ? { stack: error.stack } : {}) });
   }
 });
 

@@ -1,3 +1,4 @@
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -95,7 +96,6 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions)); // com a mesma configuração
-
 
 // Middleware para log de requisições
 app.use((req, res, next) => {
@@ -672,3 +672,5 @@ process.on('uncaughtException', (err) => {
   console.error('💥 Exceção não capturada:', err);
   shutdown('uncaughtException');
 });
+
+

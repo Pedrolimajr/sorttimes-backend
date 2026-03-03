@@ -452,6 +452,49 @@ app.post('/api/presenca/:linkId/auth', async (req, res) => {
   }
 });
 
+// POST - Autenticação de admin para visualizar todos os jogadores do link
+app.post('/api/presenca/:linkId/admin-auth', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    // Credenciais fixas para acesso admin da tela de presença
+    const ADMIN_USER = process.env.PRESENCA_ADMIN_USER || 'sorttimes';
+    const ADMIN_PASS = process.env.PRESENCA_ADMIN_PASS || '2025@sorttimes';
+
+    if (username !== ADMIN_USER || password !== ADMIN_PASS) {
+      return res.status(401).json({
+        success: false,
+        message: 'Credenciais de admin inválidas.'
+      });
+    }
+
+    const { linkId } = req.params;
+    const link = await LinkPresenca.findOne({ linkId });
+
+    if (!link) {
+      return res.status(404).json({
+        success: false,
+        message: 'Link não encontrado ou expirado'
+      });
+    }
+
+    // Retorna todos os jogadores vinculados ao link, com status de presença
+    return res.json({
+      success: true,
+      data: {
+        dataJogo: link.dataJogo,
+        jogadores: link.jogadores || []
+      }
+    });
+  } catch (error) {
+    console.error('Erro na autenticação admin de presença:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao autenticar admin de presença'
+    });
+  }
+});
+
 // POST - Confirmar presença
 // - Fluxo jogador: usa sessionId (não confia em jogadorId vindo do client)
 // - Fluxo admin (SorteioTimes): usa jogadorId diretamente (mantém funcionalidade atual)

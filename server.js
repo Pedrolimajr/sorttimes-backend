@@ -1,5 +1,3 @@
-
-
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -98,6 +96,7 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions)); // com a mesma configuração
+
 
 // Middleware para log de requisições
 app.use((req, res, next) => {
@@ -357,9 +356,13 @@ app.post('/api/presenca/:linkId/auth', async (req, res) => {
 
     // Procura o jogador apenas dentro do contexto do link (sem expor lista)
     const nomeNormalizado = nome.trim().toLowerCase();
-    const jogadorNoLink = link.jogadores.find(j => 
-      j.nome && j.nome.trim().toLowerCase() === nomeNormalizado
-    );
+    const jogadorNoLink = link.jogadores.find(j => {
+      if (!j.nome) return false;
+      const dbNome = j.nome.trim().toLowerCase();
+      // Permite match exato ou se o nome no banco começa com o nome digitado (seguido de espaço)
+      // Ex: Input "Pedro Jr" encontra "Pedro Jr da Silva"
+      return dbNome === nomeNormalizado || dbNome.startsWith(nomeNormalizado + ' ');
+    });
 
     if (!jogadorNoLink) {
       // Atualiza tentativas para nome/IP inválido
@@ -763,5 +766,3 @@ process.on('uncaughtException', (err) => {
   console.error('💥 Exceção não capturada:', err);
   shutdown('uncaughtException');
 });
-
-

@@ -12,7 +12,6 @@ const planilhasRoutes = require('./routes/planilhas');
 const authRoutes = require('./routes/authRoutes'); //Rota Login
 const Transacao = require('./models/Transacao');
 const Jogador = require('./models/Jogador');
-const authMiddleware = require('./middleware/auth');
 const dotenv = require('dotenv');
 const { Server } = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
@@ -225,48 +224,6 @@ app.get('/api/financeiro/backup', async (req, res) => {
 
 // ==================== ROTAS DE CONFIRMAÇÃO DE PRESENÇA ====================
 
-// POST - Gerar link de presença (admin / autenticado)
-app.post('/api/gerar-link-presenca', authMiddleware, async (req, res) => {
-  try {
-    const { jogadores, dataJogo } = req.body;
-
-    if (!Array.isArray(jogadores) || jogadores.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Lista de jogadores é obrigatória para gerar o link'
-      });
-    }
-
-    if (!dataJogo) {
-      return res.status(400).json({
-        success: false,
-        message: 'Data do jogo é obrigatória'
-      });
-    }
-
-    const linkId = uuidv4();
-
-    const novoLink = new LinkPresenca({
-      linkId,
-      jogadores,
-      dataJogo: new Date(dataJogo)
-    });
-
-    await novoLink.save();
-
-    return res.status(201).json({
-      success: true,
-      linkId
-    });
-  } catch (error) {
-    console.error('Erro ao gerar link de presença:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Erro ao gerar link de presença'
-    });
-  }
-});
-
 // Helper para obter IP real do cliente
 const getClientIp = (req) => {
   const xForwardedFor = req.headers['x-forwarded-for'];
@@ -448,49 +405,6 @@ app.post('/api/presenca/:linkId/auth', async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Erro ao autenticar presença'
-    });
-  }
-});
-
-// POST - Autenticação de admin para visualizar todos os jogadores do link
-app.post('/api/presenca/:linkId/admin-auth', async (req, res) => {
-  try {
-    const { username, password } = req.body;
-
-    // Credenciais fixas para acesso admin da tela de presença
-    const ADMIN_USER = process.env.PRESENCA_ADMIN_USER || 'sorttimes';
-    const ADMIN_PASS = process.env.PRESENCA_ADMIN_PASS || '2025@sorttimes';
-
-    if (username !== ADMIN_USER || password !== ADMIN_PASS) {
-      return res.status(401).json({
-        success: false,
-        message: 'Credenciais de admin inválidas.'
-      });
-    }
-
-    const { linkId } = req.params;
-    const link = await LinkPresenca.findOne({ linkId });
-
-    if (!link) {
-      return res.status(404).json({
-        success: false,
-        message: 'Link não encontrado ou expirado'
-      });
-    }
-
-    // Retorna todos os jogadores vinculados ao link, com status de presença
-    return res.json({
-      success: true,
-      data: {
-        dataJogo: link.dataJogo,
-        jogadores: link.jogadores || []
-      }
-    });
-  } catch (error) {
-    console.error('Erro na autenticação admin de presença:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Erro ao autenticar admin de presença'
     });
   }
 });

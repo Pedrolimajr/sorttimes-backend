@@ -10,11 +10,22 @@ const hpp = require('hpp');
 const partidasRoutes = require('./routes/partidas');
 const planilhasRoutes = require('./routes/planilhas');
 const authRoutes = require('./routes/authRoutes'); //Rota Login
-const Transacao = require('./models/Transacao'); // Adicione esta linha
+const Transacao = require('./models/Transacao');
+const Jogador = require('./models/Jogador');
 const dotenv = require('dotenv');
 const { Server } = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
 const LinkPresenca = require('./models/LinkPresenca');
+
+// Controle em memória para tentativas de autenticação na confirmação de presença
+// Chave: `${ip}:${linkId}`
+// Valor: { attempts: number, blockedUntil: Date, lastAttemptAt: Date }
+const presencaAttempts = new Map();
+
+// Sessões temporárias de confirmação de presença
+// Chave: sessionId (uuid)
+// Valor: { linkId, jogadorId, expiresAt: Date }
+const presencaSessions = new Map();
 
 require('dotenv').config();
 
@@ -211,36 +222,18 @@ app.get('/api/financeiro/backup', async (req, res) => {
   }
 });
 
-// Armazenamento temporário dos links
-// const linksPresenca = new Map();
+// ==================== ROTAS DE CONFIRMAÇÃO DE PRESENÇA ====================
 
-// Rotas para confirmação de presença
-app.post('/api/gerar-link-presenca', async (req, res) => {
-  try {
-    const linkId = uuidv4();
-
-    const novoLink = new LinkPresenca({
-      linkId,
-      jogadores: req.body.jogadores,
-      dataJogo: req.body.dataJogo
-    });
-
-    await novoLink.save();
-
-    res.json({
-      success: true,
-      linkId
-    });
-  } catch (error) {
-    console.error('Erro ao gerar link:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erro ao gerar link de presença'
-    });
+// Helper para obter IP real do cliente
+const getClientIp = (req) => {
+  const xForwardedFor = req.headers['x-forwarded-for'];
+  if (xForwardedFor) {
+    return xForwardedFor.split(',')[0].trim();
   }
-});
+  return req.ip || req.connection?.remoteAddress || 'unknown';
+};
 
-
+// GET - Buscar dados públicos do link de presença (sem lista de jogadores)
 app.get('/api/presenca/:linkId', async (req, res) => {
   try {
     const link = await LinkPresenca.findOne({ linkId: req.params.linkId });
@@ -252,27 +245,179 @@ app.get('/api/presenca/:linkId', async (req, res) => {
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       data: {
-        jogadores: link.jogadores,
+        // Apenas informações do evento, nunca a lista completa de jogadores
         dataJogo: link.dataJogo
       }
     });
   } catch (error) {
-    console.error('Erro ao buscar link:', error);
-    res.status(500).json({
+    console.error('Erro ao buscar link de presença:', error);
+    return res.status(500).json({
       success: false,
       message: 'Erro ao buscar dados de presença'
     });
   }
 });
 
+// POST - Autenticação do jogador para confirmação de presença
+app.post('/api/presenca/:linkId/auth', async (req, res) => {
+  try {
+    const { nome, password } = req.body; // password = DDMMAAAA
+
+    if (!nome || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nome e senha são obrigatórios'
+      });
+    }
+
+    // Validação de formato no backend (nunca confiar só no front)
+    if (typeof password !== 'string' || !/^\d{8}$/.test(password)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Formato de senha inválido. Use DDMMAAAA.'
+      });
+    }
+
+    const ip = getClientIp(req);
+    const { linkId } = req.params;
+    const key = `${ip}:${linkId}`;
+    const now = new Date();
+
+    let attemptInfo = presencaAttempts.get(key) || {
+      attempts: 0,
+      blockedUntil: null,
+      lastAttemptAt: null
+    };
+
+    // Verifica bloqueio ativo
+    if (attemptInfo.blockedUntil && attemptInfo.blockedUntil > now) {
+      const remainingMs = attemptInfo.blockedUntil.getTime() - now.getTime();
+      console.warn(`IP bloqueado para presença. IP=${ip} Link=${linkId} Restante=${remainingMs}ms`);
+      return res.status(429).json({
+        success: false,
+        message: 'Muitas tentativas inválidas. Tente novamente em 10 minutos.'
+      });
+    }
+
+    const link = await LinkPresenca.findOne({ linkId });
+
+    if (!link) {
+      return res.status(404).json({
+        success: false,
+        message: 'Link não encontrado ou expirado'
+      });
+    }
+
+    // Procura o jogador apenas dentro do contexto do link (sem expor lista)
+    const nomeNormalizado = nome.trim().toLowerCase();
+    const jogadorNoLink = link.jogadores.find(j => 
+      j.nome && j.nome.trim().toLowerCase() === nomeNormalizado
+    );
+
+    if (!jogadorNoLink) {
+      // Atualiza tentativas para nome/IP inválido
+      attemptInfo.attempts += 1;
+      attemptInfo.lastAttemptAt = now;
+
+      if (attemptInfo.attempts >= 3) {
+        attemptInfo.blockedUntil = new Date(now.getTime() + 10 * 60 * 1000);
+        console.warn(`🚫 Bloqueio ativado por muitas tentativas inválidas. IP=${ip} Link=${linkId} Hora=${now.toISOString()}`);
+      }
+
+      presencaAttempts.set(key, attemptInfo);
+
+      const blocked = attemptInfo.blockedUntil && attemptInfo.blockedUntil > now;
+      return res.status(blocked ? 429 : 401).json({
+        success: false,
+        message: blocked
+          ? 'Muitas tentativas inválidas. Tente novamente em 10 minutos.'
+          : 'Nome ou senha inválidos.'
+      });
+    }
+
+    // Busca o jogador no banco para validar data de nascimento
+    const jogador = await Jogador.findById(jogadorNoLink.id || jogadorNoLink._id);
+
+    if (!jogador || !jogador.dataNascimento) {
+      return res.status(401).json({
+        success: false,
+        message: 'Não foi possível autenticar com os dados informados.'
+      });
+    }
+
+    const data = new Date(jogador.dataNascimento);
+    const dd = String(data.getDate()).padStart(2, '0');
+    const mm = String(data.getMonth() + 1).padStart(2, '0');
+    const yyyy = String(data.getFullYear());
+    const senhaCorreta = `${dd}${mm}${yyyy}`;
+
+    if (password !== senhaCorreta) {
+      // Senha incorreta: atualiza tentativas
+      attemptInfo.attempts += 1;
+      attemptInfo.lastAttemptAt = now;
+
+      if (attemptInfo.attempts >= 3) {
+        attemptInfo.blockedUntil = new Date(now.getTime() + 10 * 60 * 1000);
+        console.warn(`🚫 Bloqueio ativado por muitas tentativas inválidas. IP=${ip} Link=${linkId} Hora=${now.toISOString()}`);
+      }
+
+      presencaAttempts.set(key, attemptInfo);
+
+      const blocked = attemptInfo.blockedUntil && attemptInfo.blockedUntil > now;
+      return res.status(blocked ? 429 : 401).json({
+        success: false,
+        message: blocked
+          ? 'Muitas tentativas inválidas. Tente novamente em 10 minutos.'
+          : 'Nome ou senha inválidos.'
+      });
+    }
+
+    // Autenticação bem-sucedida: limpa tentativas
+    presencaAttempts.delete(key);
+
+    // Cria sessão temporária exclusiva para este jogador
+    const sessionId = uuidv4();
+    const sessionDurationMinutes = 30;
+    const expiresAt = new Date(now.getTime() + sessionDurationMinutes * 60 * 1000);
+
+    presencaSessions.set(sessionId, {
+      linkId,
+      jogadorId: String(jogador._id),
+      expiresAt
+    });
+
+    console.log(`✅ Sessão de presença criada. Jogador=${jogador.nome} Link=${linkId} IP=${ip} Expira=${expiresAt.toISOString()}`);
+
+    return res.json({
+      success: true,
+      jogador: {
+        id: String(jogador._id),
+        nome: jogador.nome,
+        presente: !!jogadorNoLink.presente
+      },
+      sessionId
+    });
+  } catch (error) {
+    console.error('Erro na autenticação de presença:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao autenticar presença'
+    });
+  }
+});
+
+// POST - Confirmar presença
+// - Fluxo jogador: usa sessionId (não confia em jogadorId vindo do client)
+// - Fluxo admin (SorteioTimes): usa jogadorId diretamente (mantém funcionalidade atual)
 app.post('/api/presenca/:linkId/confirmar', async (req, res) => {
   try {
-    const { jogadorId, presente } = req.body;
+    const { jogadorId, presente, sessionId } = req.body;
+    const { linkId } = req.params;
 
-    const link = await LinkPresenca.findOne({ linkId: req.params.linkId });
+    const link = await LinkPresenca.findOne({ linkId });
 
     if (!link) {
       return res.status(404).json({
@@ -281,7 +426,24 @@ app.post('/api/presenca/:linkId/confirmar', async (req, res) => {
       });
     }
 
-    const jogadorIndex = link.jogadores.findIndex(j => j.id === jogadorId);
+    let jogadorIdEfetivo = jogadorId;
+
+    // Se vier sessionId, trata como confirmação do próprio jogador autenticado
+    if (sessionId) {
+      const session = presencaSessions.get(sessionId);
+      const now = new Date();
+
+      if (!session || session.linkId !== linkId || session.expiresAt <= now) {
+        return res.status(401).json({
+          success: false,
+          message: 'Sessão de confirmação expirada ou inválida.'
+        });
+      }
+
+      jogadorIdEfetivo = session.jogadorId;
+    }
+
+    const jogadorIndex = link.jogadores.findIndex(j => String(j.id || j._id) === String(jogadorIdEfetivo));
 
     if (jogadorIndex === -1) {
       return res.status(404).json({
@@ -291,27 +453,24 @@ app.post('/api/presenca/:linkId/confirmar', async (req, res) => {
     }
 
     // Atualiza o jogador
-    link.jogadores[jogadorIndex].presente = presente;
+    link.jogadores[jogadorIndex].presente = !!presente;
 
-    // 🛠️ IMPORTANTE: informar que o campo foi modificado
+    // Informa que o campo foi modificado
     link.markModified('jogadores');
 
-    // Agora sim ele salva
     await link.save();
 
-    io.emit('presencaAtualizada', { jogadorId, presente });
+    io.emit('presencaAtualizada', { jogadorId: jogadorIdEfetivo, presente: !!presente });
 
-    res.json({ success: true });
+    return res.json({ success: true });
   } catch (error) {
     console.error('Erro ao confirmar presença:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'Erro ao confirmar presença'
     });
   }
 });
-
-
 
 // Rota de saúde aprimorada 
 app.get('/api/health', async (req, res) => {
@@ -465,48 +624,21 @@ const server = app.listen(PORT, () => {
 });
 
 // Configuração do Socket.IO
-app.options('*', cors());
-
-// Atualize a configuração do Socket.IO
 const io = new Server(server, {
   cors: {
     origin: [
       'https://sorttimes-frontend.vercel.app',
       'http://localhost:5173'
     ],
-    methods: ["GET", "POST"],
-    allowedHeaders: ["my-custom-header"],
-    credentials: true
-  },
-  transports: ['websocket', 'polling'], // Adicione polling como fallback
-  allowEIO3: true // Para compatibilidade com clientes mais antigos
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['my-custom-header']
+  }
 });
 
-// Adicione tratamento de erros para o Socket.IO
-io.engine.on("connection_error", (err) => {
-  console.log("Erro de conexão Socket.IO:", {
-    code: err.code,
-    message: err.message,
-    context: err.context
-  });
-});
-
-// Disponibiliza o io para as rotas
-app.set('io', io);
-
-// Socket.IO connection handler
-io.on('connection', (socket) => {
-  console.log('👤 Usuário conectado:', socket.id);
-
-  socket.on('disconnect', () => {
-    console.log('👋 Usuário desconectado:', socket.id);
-  });
-});
-
-// ==================== ENCERRAMENTO SEGURO ====================
+// Encerramento gracioso do servidor
 const shutdown = (signal) => {
   console.log(`🛑 Recebido sinal ${signal}...`);
-  
+
   server.close(async () => {
     console.log('⏳ Fechando conexão com o MongoDB...');
     try {
@@ -515,7 +647,7 @@ const shutdown = (signal) => {
     } catch (err) {
       console.error('❌ Erro ao fechar conexão com MongoDB:', err.message);
     }
-    
+
     console.log('👋 Servidor encerrado com sucesso');
     process.exit(0);
   });
@@ -540,7 +672,3 @@ process.on('uncaughtException', (err) => {
   console.error('💥 Exceção não capturada:', err);
   shutdown('uncaughtException');
 });
-
-
-
-

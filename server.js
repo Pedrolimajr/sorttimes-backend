@@ -465,11 +465,21 @@ app.post('/api/presenca/:linkId/admin-auth', async (req, res) => {
     const usernameNorm = (username || '').trim().toLowerCase();
     const passwordNorm = (password || '').trim();
 
-    // Credenciais fixas para acesso admin da tela de presença
-    const ADMIN_USER = (process.env.PRESENCA_ADMIN_USER || 'sorttimes').trim().toLowerCase();
-    const ADMIN_PASS = (process.env.PRESENCA_ADMIN_PASS || '2025@sorttimes').trim();
+    // Credenciais para acesso admin da tela de presença (via variáveis de ambiente)
+    const ADMIN_USER = process.env.PRESENCA_ADMIN_USER;
+    const ADMIN_PASS = process.env.PRESENCA_ADMIN_PASS;
 
-    if (usernameNorm !== ADMIN_USER || passwordNorm !== ADMIN_PASS) {
+    // Validação para garantir que as variáveis de ambiente estão configuradas
+    if (!ADMIN_USER || !ADMIN_PASS) {
+      console.error('ERRO: As variáveis de ambiente PRESENCA_ADMIN_USER e PRESENCA_ADMIN_PASS não estão configuradas no servidor.');
+      return res.status(500).json({
+        success: false,
+        message: 'Erro de configuração do servidor. Contate o administrador.'
+      });
+    }
+
+    // Compara as credenciais fornecidas com as do ambiente
+    if (usernameNorm !== ADMIN_USER.trim().toLowerCase() || passwordNorm !== ADMIN_PASS.trim()) {
       return res.status(401).json({
         success: false,
         message: 'Credenciais de admin inválidas.'

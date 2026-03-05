@@ -471,10 +471,13 @@ app.post('/api/presenca/:linkId/admin-auth', async (req, res) => {
 
     // Validação para garantir que as variáveis de ambiente estão configuradas
     if (!ADMIN_USER || !ADMIN_PASS) {
-      console.error('ERRO: As variáveis de ambiente PRESENCA_ADMIN_USER e PRESENCA_ADMIN_PASS não estão configuradas no servidor.');
+      const devMessage = 'ERRO: As variáveis de ambiente PRESENCA_ADMIN_USER e/ou PRESENCA_ADMIN_PASS não estão configuradas no servidor.';
+      console.error(devMessage);
       return res.status(500).json({
         success: false,
-        message: 'Erro de configuração do servidor. Contate o administrador.'
+        message: process.env.NODE_ENV === 'production' 
+          ? 'Erro de configuração do servidor. Contate o administrador.'
+          : devMessage
       });
     }
 

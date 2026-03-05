@@ -271,6 +271,59 @@ router.patch('/:id/bloqueio', validateObjectId, async (req, res) => {
   }
 });
 
+// Rota PATCH - Marcar/Desmarcar jogador como isento
+router.patch('/:id/isencao', validateObjectId, async (req, res) => {
+  try {
+    const { isento } = req.body;
+
+    if (typeof isento !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'O campo "isento" é obrigatório e deve ser booleano'
+      });
+    }
+
+    const jogador = await Jogador.findById(req.params.id);
+
+    if (!jogador) {
+      return res.status(404).json({
+        success: false,
+        message: 'Jogador não encontrado'
+      });
+    }
+
+    // Atualiza todos os meses
+    jogador.pagamentos.forEach(pagamento => {
+      pagamento.isento = isento;
+      if (isento) {
+        pagamento.pago = false; // Se isento, não está 'pago' para evitar confusão
+      }
+    });
+
+    // Se isento, o status financeiro deve ser 'Adimplente'
+    if (isento) {
+      jogador.statusFinanceiro = 'Adimplente';
+    } else {
+      // Se não for mais isento, recalcular o status
+      const mesAtual = new Date().getMonth();
+      const todosMesesPagos = jogador.pagamentos
+        .slice(0, mesAtual + 1)
+        .every(p => p.pago || p.isento);
+      jogador.statusFinanceiro = todosMesesPagos ? 'Adimplente' : 'Inadimplente';
+    }
+
+    await jogador.save();
+
+    res.json({
+      success: true,
+      message: isento ? 'Jogador isento de mensalidades' : 'Isenção do jogador removida',
+      data: jogador
+    });
+  } catch (error) {
+    handleError(res, error, 'Erro ao atualizar isenção do jogador');
+  }
+});
+
 // Rota DELETE - Remover jogador
 router.delete('/:id', validateObjectId, async (req, res) => {
   try {

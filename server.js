@@ -256,8 +256,8 @@ app.post('/api/gerar-link-presenca', authMiddleware, async (req, res) => {
     const linkId = uuidv4();
     const dataJogoDate = new Date(dataJogo);
     
-    // Define expiração para 24 horas após o jogo
-    const expireAt = new Date(dataJogoDate.getTime() + 24 * 60 * 60 * 1000);
+    // Define expiração para 15 horas após o jogo
+    const expireAt = new Date(dataJogoDate.getTime() + 15 * 60 * 60 * 1000);
 
     const novoLink = new LinkPresenca({
       linkId,

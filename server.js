@@ -52,6 +52,15 @@ const connectDB = async () => {
       useUnifiedTopology: true
     });
     console.log('✅ MongoDB conectado com sucesso!');
+
+    // Configurar índice TTL para LinkPresenca (expiração automática)
+    try {
+      // Cria o índice na coleção diretamente para garantir que funcione mesmo sem estar no schema
+      await LinkPresenca.collection.createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 });
+      console.log('✅ Índice TTL configurado para LinkPresenca');
+    } catch (err) {
+      console.error('Erro ao configurar índice TTL:', err);
+    }
   } catch (error) {
     console.error('❌ Erro ao conectar ao MongoDB:', error.message);
     process.exit(1);
@@ -245,12 +254,19 @@ app.post('/api/gerar-link-presenca', authMiddleware, async (req, res) => {
     }
 
     const linkId = uuidv4();
+    const dataJogoDate = new Date(dataJogo);
+    
+    // Define expiração para 24 horas após o jogo
+    const expireAt = new Date(dataJogoDate.getTime() + 24 * 60 * 60 * 1000);
 
     const novoLink = new LinkPresenca({
       linkId,
       jogadores,
-      dataJogo: new Date(dataJogo)
+      dataJogo: dataJogoDate
     });
+    
+    // Adiciona o campo expireAt mesmo que não esteja no schema (strict: false)
+    novoLink.set('expireAt', expireAt, { strict: false });
 
     await novoLink.save();
 

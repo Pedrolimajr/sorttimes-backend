@@ -17,6 +17,8 @@ const dotenv = require('dotenv');
 const { Server } = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
 const LinkPresenca = require('./models/LinkPresenca');
+const LinkPartida = require('./models/LinkPartida');
+const Partida = require('./models/Partida');
 
 // Controle em memória para tentativas de autenticação na confirmação de presença
 // Chave: `${ip}:${linkId}`
@@ -57,7 +59,9 @@ const connectDB = async () => {
     try {
       // Cria o índice na coleção diretamente para garantir que funcione mesmo sem estar no schema
       await LinkPresenca.collection.createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 });
+      await LinkPartida.collection.createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 });
       console.log('✅ Índice TTL configurado para LinkPresenca');
+      console.log('✅ Índice TTL configurado para LinkPartida');
     } catch (err) {
       console.error('Erro ao configurar índice TTL:', err);
     }
@@ -74,6 +78,7 @@ connectDB();
 const financeiroRoutes = require('./routes/financeiro');
 const jogadorRoutes = require('./routes/jogadores');
 const sorteioTimesRoutes = require('./routes/sorteioTimes');
+const partidasPublicRoutes = require('./routes/partidasPublic');
 
 const app = express();
 
@@ -201,6 +206,7 @@ app.use('/api/financeiro', financeiroRoutes);
 app.use('/api/agenda', partidasRoutes);
 app.use('/api/planilhas', planilhasRoutes);
 app.use('/api/auth', authRoutes); // Rota de autenticação
+app.use('/api/partida-publica', partidasPublicRoutes);
 
 // Rota de teste para DELETE
 app.delete('/api/planilhas/teste-delete', (req, res) => {

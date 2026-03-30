@@ -3,6 +3,7 @@ const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const LinkPartida = require('../models/LinkPartida');
 const Partida = require('../models/Partida');
+const Jogador = require('../models/Jogador');
 const auth = require('../middleware/auth');
 
 // Gerar link público (Apenas Admin)
@@ -34,7 +35,15 @@ router.get('/:linkId', async (req, res) => {
     if (!link) {
       return res.status(404).json({ success: false, message: 'Link expirado ou inexistente' });
     }
-    res.json({ success: true, data: link.partidaId });
+
+    // Busca apenas os nomes dos jogadores ativos para o select público
+    const jogadores = await Jogador.find({ ativo: { $ne: false } }).select('nome').sort({ nome: 1 });
+    
+    res.json({ 
+      success: true, 
+      data: link.partidaId,
+      jogadores: jogadores.map(j => j.nome)
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Erro ao buscar partida' });
   }

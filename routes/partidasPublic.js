@@ -139,7 +139,11 @@ router.post('/:linkId/auth-jogador', async (req, res) => {
 
 // Autenticação do Admin na Votação
 router.post('/:linkId/auth-admin', async (req, res) => {
-  const { username, password } = req.body;
+  const username = (req.body.username || '').trim();
+  const password = (req.body.password || '').trim();
+
+  console.log(`[AUTH-ADMIN] Tentativa de login: user="${username}"`);
+
   if (username === 'sorttimes' && password === '2025@sorttimes') {
     return res.json({ success: true, isAdmin: true });
   }

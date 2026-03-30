@@ -145,6 +145,25 @@ router.patch('/:linkId/evento/:tipo/:index', async (req, res) => {
   }
 });
 
+// Atualizar Notas do Juiz (Observações)
+router.patch('/:linkId/notas', async (req, res) => {
+  try {
+    const { notas } = req.body;
+    const link = await LinkPartida.findOne({ linkId: req.params.linkId });
+    if (!link) return res.status(404).json({ success: false, message: 'Link expirado' });
+
+    const partida = await Partida.findById(link.partidaId);
+    if (partida.encerrada) return res.status(400).json({ success: false, message: 'Edição bloqueada' });
+
+    partida.observacoes = notas;
+    await partida.save();
+
+    res.json({ success: true, data: partida });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro ao salvar notas' });
+  }
+});
+
 // Autenticação do Jogador para Votação
 router.post('/:linkId/auth-jogador', async (req, res) => {
   try {

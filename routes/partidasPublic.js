@@ -92,20 +92,77 @@ router.post('/:linkId/evento', async (req, res) => {
   }
 });
 
+// Autenticação do Jogador para Votação
+router.post('/:linkId/auth-jogador', async (req, res) => {
+  try {
+    const { nome, password } = req.body; // password = DDMMAAAA
+    const link = await LinkPartida.findOne({ linkId: req.params.linkId });
+    if (!link) return res.status(404).json({ success: false, message: 'Link inválido' });
+
+    const nomeNormalizado = nome.trim().toLowerCase();
+    const jogador = await Jogador.findOne({ 
+      nome: { $regex: new RegExp(`^${nomeNormalizado}$`, 'i') },
+      ativo: { $ne: false }
+    });
+
+    if (!jogador || !jogador.dataNascimento) {
+      return res.status(401).json({ success: false, message: 'Jogador não encontrado ou sem data de nascimento.' });
+    }
+
+    const data = new Date(jogador.dataNascimento);
+    const dd = String(data.getDate()).padStart(2, '0');
+    const mm = String(data.getMonth() + 1).padStart(2, '0');
+    const yyyy = String(data.getFullYear());
+    const senhaCorreta = `${dd}${mm}${yyyy}`;
+
+    if (password !== senhaCorreta) {
+      return res.status(401).json({ success: false, message: 'Data de nascimento incorreta.' });
+    }
+
+    // Verifica se já votou nesta partida
+    const partida = await Partida.findById(link.partidaId);
+    const jaVotou = partida.jogadoresQueVotaram.includes(jogador._id);
+
+    res.json({ 
+      success: true, 
+      jogador: { id: jogador._id, nome: jogador.nome },
+      jaVotou 
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro na autenticação.' });
+  }
+});
+
+// Autenticação do Admin na Votação
+router.post('/:linkId/auth-admin', async (req, res) => {
+  const { username, password } = req.body;
+  if (username === 'sorttimes' && password === '2025@sorttimes') {
+    return res.json({ success: true, isAdmin: true });
+  }
+  res.status(401).json({ success: false, message: 'Credenciais de administrador inválidas.' });
+});
+
 // Registrar Voto Público
 router.post('/:linkId/votar', async (req, res) => {
   try {
-    const { votos } = req.body; // Array de { categoria, jogador }
+    const { votos, jogadorId } = req.body; 
     const link = await LinkPartida.findOne({ linkId: req.params.linkId });
     if (!link) return res.status(404).json({ success: false, message: 'Link expirado' });
 
     const partida = await Partida.findById(link.partidaId);
     if (partida.encerrada) return res.status(400).json({ success: false, message: 'Votação encerrada' });
 
-    // Adiciona os votos (podemos adicionar lógica de IP aqui futuramente se quiser evitar votos duplicados)
+    if (partida.jogadoresQueVotaram.includes(jogadorId)) {
+      return res.status(400).json({ success: false, message: 'Você já registrou seu voto!' });
+    }
+
+    // Adiciona os votos individualmente
     votos.forEach(v => {
       partida.votos.push({ categoria: v.categoria, jogador: v.jogador, votoIp: req.ip });
     });
+
+    // Registra que este jogador votou
+    partida.jogadoresQueVotaram.push(jogadorId);
 
     await partida.save();
     res.json({ success: true, message: 'Votos registrados com sucesso!' });

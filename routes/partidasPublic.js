@@ -100,23 +100,30 @@ router.post('/:linkId/auth-jogador', async (req, res) => {
     if (!link) return res.status(404).json({ success: false, message: 'Link inválido' });
 
     const nomeNormalizado = nome.trim().toLowerCase();
-    const jogador = await Jogador.findOne({ 
-      nome: { $regex: new RegExp(`^${nomeNormalizado}$`, 'i') },
+    const escapedNome = nomeNormalizado.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    
+    // Busca jogadores que começam com o nome digitado (permite nome + primeiro sobrenome)
+    const jogadores = await Jogador.find({ 
+      nome: { $regex: new RegExp(`^${escapedNome}(\\s|$)`, 'i') },
       ativo: { $ne: false }
     });
 
-    if (!jogador || !jogador.dataNascimento) {
-      return res.status(401).json({ success: false, message: 'Jogador não encontrado ou sem data de nascimento.' });
+    if (jogadores.length === 0) {
+      return res.status(401).json({ success: false, message: 'Jogador não encontrado.' });
     }
 
-    const data = new Date(jogador.dataNascimento);
-    const dd = String(data.getDate()).padStart(2, '0');
-    const mm = String(data.getMonth() + 1).padStart(2, '0');
-    const yyyy = String(data.getFullYear());
-    const senhaCorreta = `${dd}${mm}${yyyy}`;
+    // Tenta encontrar o jogador que corresponde à data de nascimento fornecida
+    const jogador = jogadores.find(j => {
+      if (!j.dataNascimento) return false;
+      const data = new Date(j.dataNascimento);
+      const dd = String(data.getDate()).padStart(2, '0');
+      const mm = String(data.getMonth() + 1).padStart(2, '0');
+      const yyyy = String(data.getFullYear());
+      return password === `${dd}${mm}${yyyy}`;
+    });
 
-    if (password !== senhaCorreta) {
-      return res.status(401).json({ success: false, message: 'Data de nascimento incorreta.' });
+    if (!jogador) {
+      return res.status(401).json({ success: false, message: 'Nome ou data de nascimento incorretos.' });
     }
 
     // Verifica se já votou nesta partida

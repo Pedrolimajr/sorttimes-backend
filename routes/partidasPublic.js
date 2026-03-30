@@ -60,6 +60,12 @@ router.post('/:linkId/evento', async (req, res) => {
     const partida = await Partida.findById(link.partidaId);
     if (partida.encerrada) return res.status(400).json({ success: false, message: 'Partida já encerrada' });
 
+    // Inicialização de segurança para documentos antigos
+    if (!partida.gols) partida.gols = [];
+    if (!partida.cartoesAmarelos) partida.cartoesAmarelos = [];
+    if (!partida.cartoesVermelhos) partida.cartoesVermelhos = [];
+    if (!partida.cartoesAzuis) partida.cartoesAzuis = [];
+
     switch (tipo) {
       case 'gol':
         partida.gols.push({ jogador, time });

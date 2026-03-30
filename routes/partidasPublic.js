@@ -114,28 +114,6 @@ router.post('/:linkId/votar', async (req, res) => {
   }
 });
 
-// Registrar Voto Público
-router.post('/:linkId/votar', async (req, res) => {
-  try {
-    const { votos } = req.body; // Array de { categoria, jogador }
-    const link = await LinkPartida.findOne({ linkId: req.params.linkId });
-    if (!link) return res.status(404).json({ success: false, message: 'Link expirado' });
-
-    const partida = await Partida.findById(link.partidaId);
-    if (partida.encerrada) return res.status(400).json({ success: false, message: 'Votação encerrada' });
-
-    // Adiciona os votos
-    votos.forEach(v => {
-      partida.votos.push({ categoria: v.categoria, jogador: v.jogador, votoIp: req.ip });
-    });
-
-    await partida.save();
-    res.json({ success: true, message: 'Votos registrados com sucesso!' });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Erro ao registrar votos' });
-  }
-});
-
 // Atualizar Destaques
 router.patch('/:linkId/destaques', async (req, res) => {
   try {

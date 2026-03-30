@@ -205,7 +205,7 @@ app.use('/api/sorteio-times', sorteioTimesRoutes);
 app.use('/api/financeiro', financeiroRoutes);
 app.use('/api/agenda', partidasRoutes);
 app.use('/api/planilhas', planilhasRoutes);
-app.use('/api/auth', authRoutes); // Rota de autenticação
+// app.use('/api/auth', authRoutes); // Rota de autenticação (já está sendo usada em outro lugar)
 app.use('/api/partida-publica', partidasPublicRoutes);
 
 // Rota de teste para DELETE

@@ -52,7 +52,7 @@ router.get('/:linkId', async (req, res) => {
 // Registrar Evento (Gol ou Cartão)
 router.post('/:linkId/evento', async (req, res) => {
   try {
-    const { tipo, jogador, time } = req.body;
+    const { tipo, jogador, time } = req.body; // 'time' é opcional para cartões
     const link = await LinkPartida.findOne({ linkId: req.params.linkId });
     
     if (!link) return res.status(404).json({ success: false, message: 'Link expirado' });
@@ -124,7 +124,11 @@ router.post('/:linkId/auth-jogador', async (req, res) => {
     const jaVotou = partida.jogadoresQueVotaram.includes(jogador._id);
 
     res.json({ 
-      success: true, 
+      success: true,
+      // Retorna o partidaId para o frontend, útil para o admin
+      partidaId: link.partidaId, 
+      // Retorna o jogador para o frontend, para exibir o nome e usar o ID
+      // no registro do voto
       jogador: { id: jogador._id, nome: jogador.nome },
       jaVotou 
     });
@@ -145,10 +149,13 @@ router.post('/:linkId/auth-admin', async (req, res) => {
 // Registrar Voto Público
 router.post('/:linkId/votar', async (req, res) => {
   try {
-    const { votos, jogadorId } = req.body; 
+    const { votos, jogadorId } = req.body;
     const link = await LinkPartida.findOne({ linkId: req.params.linkId });
     if (!link) return res.status(404).json({ success: false, message: 'Link expirado' });
 
+    // Popula a partida para ter acesso a jogadoresQueVotaram
+    // const partida = await Partida.findById(link.partidaId).populate('jogadoresQueVotaram');
+    // O populate não é necessário aqui, pois o array já contém os ObjectIDs
     const partida = await Partida.findById(link.partidaId);
     if (partida.encerrada) return res.status(400).json({ success: false, message: 'Votação encerrada' });
 

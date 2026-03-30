@@ -92,6 +92,59 @@ router.post('/:linkId/evento', async (req, res) => {
   }
 });
 
+// Excluir um evento (Gol ou Cartão)
+router.delete('/:linkId/evento/:tipo/:index', async (req, res) => {
+  try {
+    const { tipo, index } = req.params;
+    const link = await LinkPartida.findOne({ linkId: req.params.linkId });
+    if (!link) return res.status(404).json({ success: false, message: 'Link expirado' });
+
+    const partida = await Partida.findById(link.partidaId);
+    if (partida.encerrada) return res.status(400).json({ success: false, message: 'Partida encerrada' });
+
+    const idx = parseInt(index);
+    if (tipo === 'gol') {
+      partida.gols.splice(idx, 1);
+    } else {
+      const fieldMap = { 'amarelo': 'cartoesAmarelos', 'vermelho': 'cartoesVermelhos', 'azul': 'cartoesAzuis' };
+      const field = fieldMap[tipo];
+      if (field && partida[field]) partida[field].splice(idx, 1);
+    }
+
+    await partida.save();
+    res.json({ success: true, data: partida });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro ao remover evento' });
+  }
+});
+
+// Editar um evento (Gol ou Cartão)
+router.patch('/:linkId/evento/:tipo/:index', async (req, res) => {
+  try {
+    const { tipo, index } = req.params;
+    const { novoNome } = req.body;
+    const link = await LinkPartida.findOne({ linkId: req.params.linkId });
+    if (!link) return res.status(404).json({ success: false, message: 'Link expirado' });
+
+    const partida = await Partida.findById(link.partidaId);
+    if (partida.encerrada) return res.status(400).json({ success: false, message: 'Partida encerrada' });
+
+    const idx = parseInt(index);
+    if (tipo === 'gol') {
+      if (partida.gols[idx]) partida.gols[idx].jogador = novoNome;
+    } else {
+      const fieldMap = { 'amarelo': 'cartoesAmarelos', 'vermelho': 'cartoesVermelhos', 'azul': 'cartoesAzuis' };
+      const field = fieldMap[tipo];
+      if (field && partida[field]) partida[field][idx] = novoNome;
+    }
+
+    await partida.save();
+    res.json({ success: true, data: partida });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro ao editar evento' });
+  }
+});
+
 // Autenticação do Jogador para Votação
 router.post('/:linkId/auth-jogador', async (req, res) => {
   try {

@@ -7,6 +7,7 @@ const partidaSchema = new mongoose.Schema({
   observacoes: { type: String, default: '' },
   gols: [{ 
     jogador: String, 
+    time: String, // 'Amarelo' ou 'Preto'
     horario: { type: Date, default: Date.now } 
   }],
   cartoesAmarelos: [String],
@@ -17,6 +18,11 @@ const partidaSchema = new mongoose.Schema({
     perebaPartida: { type: String, default: '' },
     golMaisBonito: { type: String, default: '' }
   },
+  votos: [{
+    categoria: String, // 'melhorPartida', 'perebaPartida', 'golMaisBonito'
+    jogador: String,
+    votoIp: String
+  }],
   encerrada: { type: Boolean, default: false },
   criadoEm: { type: Date, default: Date.now },
   atualizadoEm: { type: Date, default: Date.now }

@@ -214,12 +214,15 @@ router.post('/:linkId/auth-jogador', async (req, res) => {
     // Verifica se já votou nesta partida
     const partida = await Partida.findById(link.partidaId);
 
-    // NOVA LÓGICA DE ACESSO: Bloqueio imediato se não participou do sorteio
+    // BLOQUEIO RESTRITO: Verifica se o jogador está na lista de participantes do sorteio
+    // Só aplica se o link for do tipo 'votacao'
     if (link.tipo === 'votacao') {
-      const listaParticipantes = partida.participantes || [];
-      const jogouAPartida = listaParticipantes.some(pId => String(pId) === String(jogador._id));
+      // Garante que participantes seja um array de Strings para comparação
+      const participantesIds = (partida.participantes || []).map(p => String(p));
+      const jogadorIdStr = String(jogador._id);
 
-      if (!jogouAPartida) {
+      if (!participantesIds.includes(jogadorIdStr)) {
+        console.log(`[BLOQUEIO] Jogador ${jogador.nome} tentou votar sem participar do sorteio.`);
         return res.status(403).json({ 
           success: false, 
           message: 'Você não participou desta partida e não pode votar.' 

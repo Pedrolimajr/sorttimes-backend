@@ -9,7 +9,11 @@ router.use(auth);
 // Listar todas as partidas agendadas
 router.get('/', async (req, res) => {
   try {
-    const partidas = await Partida.find().sort({ data: 1 });
+    let query = Partida.find().sort({ data: 1 });
+    if (req.query.populate === 'participantes') {
+      query = query.populate('participantes', 'nome'); // Popula apenas o nome dos participantes
+    }
+    const partidas = await query.exec();
     res.json(partidas);
   } catch (error) {
     res.status(500).json({ error: 'Erro ao buscar partidas' });

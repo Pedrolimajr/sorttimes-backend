@@ -34,6 +34,7 @@ router.post('/gerar-link/:partidaId', auth, async (req, res) => {
 router.post('/vincular-participantes/:partidaId', auth, async (req, res) => {
   try {
     const { participantes } = req.body; // Array de IDs de jogadores
+    console.log(`[BACKEND - VINCULAR] Recebido para partida ${req.params.partidaId}:`, participantes);
     await Partida.findByIdAndUpdate(req.params.partidaId, { participantes });
     res.json({ success: true, message: 'Lista de participantes atualizada!' });
   } catch (error) {
@@ -220,6 +221,9 @@ router.post('/:linkId/auth-jogador', async (req, res) => {
       const participantesIds = (partida.participantes || []).map(p => String(p));
       const jogadorIdStr = String(jogador._id);
 
+      console.log(`[BACKEND - AUTH-JOGADOR] Partida ID: ${partida._id}, Link Tipo: ${link.tipo}`);
+      console.log(`[BACKEND - AUTH-JOGADOR] Participantes da Partida (IDs do DB):`, participantesIds);
+      console.log(`[BACKEND - AUTH-JOGADOR] Jogador Autenticado ID: ${jogadorIdStr}`);
       if (!participantesIds.includes(jogadorIdStr)) {
         console.warn(`[BLOQUEIO] Jogador ${jogador.nome} tentou acessar votação sem ter sido sorteado.`);
         return res.status(403).json({ 

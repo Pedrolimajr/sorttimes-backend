@@ -214,8 +214,7 @@ router.post('/:linkId/auth-jogador', async (req, res) => {
     // Verifica se já votou nesta partida
     const partida = await Partida.findById(link.partidaId);
 
-    // BLOQUEIO RIGOROSO: Verifica se o jogador consta na lista de participantes sorteados
-    // Se o link foi gerado como 'votacao', a lista de participantes da partida no BD deve conter o ID do jogador
+    // NOVA LÓGICA DE ACESSO: Bloqueio imediato se não participou do sorteio
     if (link.tipo === 'votacao') {
       const listaParticipantes = partida.participantes || [];
       const jogouAPartida = listaParticipantes.some(pId => String(pId) === String(jogador._id));
@@ -223,7 +222,7 @@ router.post('/:linkId/auth-jogador', async (req, res) => {
       if (!jogouAPartida) {
         return res.status(403).json({ 
           success: false, 
-          message: 'Acesso negado. Seu nome não consta na lista de jogadores sorteados para esta partida.' 
+          message: 'Você não participou desta partida e não pode votar.' 
         });
       }
     }

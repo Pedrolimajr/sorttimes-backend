@@ -44,18 +44,30 @@ router.post('/vincular-participantes/:partidaId', auth, async (req, res) => {
 // Buscar dados da partida via link público
 router.get('/:linkId', async (req, res) => {
   try {
-    const link = await LinkPartida.findOne({ linkId: req.params.linkId }).populate('partidaId');
+    const link = await LinkPartida.findOne({ linkId: req.params.linkId }).populate({
+      path: 'partidaId',
+      populate: { path: 'participantes', select: 'nome' }
+    });
+
     if (!link) {
       return res.status(404).json({ success: false, message: 'Link expirado ou inexistente' });
     }
 
-    // Busca apenas os nomes dos jogadores ativos para o select público
-    const jogadores = await Jogador.find({ ativo: { $ne: false } }).select('nome').sort({ nome: 1 });
+    let nomesJogadores = [];
+
+    // Se for link de votação, filtra a lista de nomes apenas para quem participou
+    if (link.tipo === 'votacao') {
+      nomesJogadores = (link.partidaId.participantes || []).map(j => j.nome).sort();
+    } else {
+      // Para eventos live, mantém a busca de todos os jogadores ativos
+      const jogadores = await Jogador.find({ ativo: { $ne: false } }).select('nome').sort({ nome: 1 });
+      nomesJogadores = jogadores.map(j => j.nome);
+    }
     
     res.json({ 
       success: true, 
       data: link.partidaId,
-      jogadores: jogadores.map(j => j.nome)
+      jogadores: nomesJogadores
     });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Erro ao buscar partida' });
@@ -214,15 +226,15 @@ router.post('/:linkId/auth-jogador', async (req, res) => {
     // Verifica se já votou nesta partida
     const partida = await Partida.findById(link.partidaId);
 
-    // BLOQUEIO RESTRITO: Verifica se o jogador está na lista de participantes do sorteio
-    // Só aplica se o link for do tipo 'votacao'
-    if (link.tipo === 'votacao') {
+    // BLOQUEIO RIGOROSO: Garante que apenas participantes do sorteio acessem a votação
+    // Se o tipo for 'votacao' ou se o link não tiver tipo (legacy), validamos os participantes
+    if (link.tipo === 'votacao' || !link.tipo) {
       // Garante que participantes seja um array de Strings para comparação
       const participantesIds = (partida.participantes || []).map(p => String(p));
       const jogadorIdStr = String(jogador._id);
 
       if (!participantesIds.includes(jogadorIdStr)) {
-        console.log(`[BLOQUEIO] Jogador ${jogador.nome} tentou votar sem participar do sorteio.`);
+        console.log(`[ACESSO NEGADO] ${jogador.nome} tentou votar sem estar no sorteio.`);
         return res.status(403).json({ 
           success: false, 
           message: 'Você não participou desta partida e não pode votar.' 

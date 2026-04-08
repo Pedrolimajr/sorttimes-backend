@@ -10,6 +10,7 @@ const auth = require('../middleware/auth');
 router.post('/gerar-link/:partidaId', auth, async (req, res) => {
   try {
     const { partidaId } = req.params;
+    const { tipo } = req.body; // 'eventos' ou 'votacao'
     const linkId = uuidv4();
     
     // Define expiração para 3 dias (72 horas)
@@ -18,13 +19,25 @@ router.post('/gerar-link/:partidaId', auth, async (req, res) => {
     const novoLink = new LinkPartida({
       linkId,
       partidaId,
-      expireAt
+      expireAt,
+      tipo: tipo || 'eventos'
     });
 
     await novoLink.save();
     res.json({ success: true, linkId });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Erro ao gerar link' });
+  }
+});
+
+// Vincular participantes a uma partida (vindo do sorteio)
+router.post('/vincular-participantes/:partidaId', auth, async (req, res) => {
+  try {
+    const { participantes } = req.body; // Array de IDs de jogadores
+    await Partida.findByIdAndUpdate(req.params.partidaId, { participantes });
+    res.json({ success: true, message: 'Lista de participantes atualizada!' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro ao vincular participantes' });
   }
 });
 
@@ -200,6 +213,17 @@ router.post('/:linkId/auth-jogador', async (req, res) => {
 
     // Verifica se já votou nesta partida
     const partida = await Partida.findById(link.partidaId);
+
+    // NOVA LÓGICA DE ACESSO: Verifica se o jogador estava no sorteio (participantes)
+    if (link.tipo === 'votacao') {
+      const isParticipante = partida.participantes && 
+                             partida.participantes.some(pId => String(pId) === String(jogador._id));
+      
+      if (!isParticipante) {
+        return res.status(403).json({ success: false, message: 'Você não participou desta partida e não pode votar.' });
+      }
+    }
+
     const jaVotou = partida.jogadoresQueVotaram.includes(jogador._id);
 
     res.json({ 

@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const partidaSchema = new mongoose.Schema({
   data: { type: Date, required: true },
   horario: { type: String, required: true },
-  local: { type: String, required: true },
+  local: { type: String, default: '' },
   observacoes: { type: String, default: '' },
   gols: [{ 
     jogador: String, 

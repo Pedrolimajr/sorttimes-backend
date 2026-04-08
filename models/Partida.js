@@ -24,6 +24,7 @@ const partidaSchema = new mongoose.Schema({
     votoIp: String
   }],
   jogadoresQueVotaram: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Jogador' }],
+  participantes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Jogador' }],
   encerrada: { type: Boolean, default: false },
   criadoEm: { type: Date, default: Date.now },
   atualizadoEm: { type: Date, default: Date.now }

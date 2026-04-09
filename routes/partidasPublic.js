@@ -45,49 +45,70 @@ router.post('/vincular-participantes/:partidaId', auth, async (req, res) => {
 // Buscar dados da partida via link público
 router.get('/:linkId', async (req, res) => {
   try {
-    const link = await LinkPartida.findOne({ linkId: req.params.linkId });
-    
-    if (!link) {
-      return res.status(404).json({ success: false, message: 'Link expirado ou inexistente' });
-    }
-
-    // Busca novamente populando os dados da partida e dos participantes para garantir o filtro
-    const linkPopulated = await LinkPartida.findById(link._id).populate({
+    // Popula o link e a partida com os participantes e seus nomes/níveis
+    const link = await LinkPartida.findOne({ linkId: req.params.linkId }).populate({
       path: 'partidaId',
       populate: { path: 'participantes', select: 'nome nivel' }
     });
 
+    if (!link) {
+      return res.status(404).json({ success: false, message: 'Link expirado ou inexistente' });
+    }
+
     let nomesJogadores = [];
 
-    // Se for link de votação (tipo 'votacao' ou sem tipo para compatibilidade), 
-    // filtra a lista de nomes apenas para Associados que participaram da partida sorteada
+    // Lista de termos a serem filtrados (placeholders), em minúsculas e sem acentos/caracteres especiais
+    const placeholderTerms = [
+      'convidado / outro', 'convidado', 'visitante', 'outro', 'teste', 'jogador teste',
+      'convidado / visitante', 'convidado(a)', 'convidado(s)', 'visitante(s)', 'jogador convidado'
+    ];
+
+    // Função auxiliar para verificar se um nome é um placeholder
+    const isPlaceholderName = (name) => {
+      if (!name) return true; // Nomes nulos ou vazios são considerados placeholders
+      const cleanedName = name.trim().toLowerCase();
+      // Verifica se o nome limpo é exatamente um dos termos ou se o inclui
+      return placeholderTerms.some(term => cleanedName === term || cleanedName.includes(term));
+    };
+
+    console.log('[DEBUG - GET /:linkId] --- INÍCIO DO FILTRO ---');
+    console.log('[DEBUG - GET /:linkId] Tipo do Link:', link.tipo);
+    
     if (link.tipo === 'votacao' || !link.tipo) {
-      const participantes = linkPopulated.partidaId?.participantes || [];
+      const participantes = link.partidaId?.participantes || [];
+      
+      console.log('[DEBUG - GET /:linkId] Participantes brutos (nome, nivel):');
+      participantes.forEach(p => {
+        if (p) console.log(`  - ID: ${p._id}, Nome: "${p.nome}", Nível: "${p.nivel}"`);
+      });
+
       nomesJogadores = participantes
         .filter(j => {
-          const nomeLimpo = j?.nome?.trim().toLowerCase();
-          return j && 
-                 j.nivel === 'Associado' && 
-                 nomeLimpo !== 'convidado / outro' && 
-                 nomeLimpo !== 'convidado' &&
-                 nomeLimpo !== 'visitante'; // Adiciona 'visitante' como um possível placeholder
+          if (!j || !j.nome || !j.nivel) {
+            console.log(`[DEBUG - GET /:linkId] Ignorando participante inválido/incompleto: ${JSON.stringify(j)}`);
+            return false;
+          }
+          const isAssociado = j.nivel === 'Associado';
+          const isPlaceholder = isPlaceholderName(j.nome);
+          
+          console.log(`[DEBUG - GET /:linkId] Processando "${j.nome}" (Nível: ${j.nivel}): Associado=${isAssociado}, Placeholder=${isPlaceholder}`);
+
+          return isAssociado && !isPlaceholder;
         })
         .map(j => j.nome)
         .sort();
     } else {
       // Para eventos live (Gols/Cartões), mantém a lista de todos os jogadores ativos (pode haver gol de convidado)
       const jogadores = await Jogador.find({ ativo: { $ne: false } }).select('nome').sort({ nome: 1 });
-      nomesJogadores = jogadores.map(j => j.nome).filter(nome => {
-        const nomeLimpo = nome?.trim().toLowerCase();
-        return nomeLimpo !== 'convidado / outro' && 
-               nomeLimpo !== 'convidado' &&
-               nomeLimpo !== 'visitante';
-      });
+      nomesJogadores = jogadores.map(j => j.nome).filter(nome => !isPlaceholderName(nome));
     }
     
+    console.log('[DEBUG - GET /:linkId] Nomes de jogadores filtrados para o frontend:', nomesJogadores);
+    console.log('[DEBUG - GET /:linkId] --- FIM DO FILTRO ---');
+
     res.json({ 
       success: true, 
-      data: linkPopulated.partidaId,
+      data: link.partidaId, // Usar 'link.partidaId' que já está populado
       jogadores: nomesJogadores
     });
   } catch (error) {
@@ -254,16 +275,22 @@ router.post('/:linkId/auth-jogador', async (req, res) => {
       const jogadorIdStr = String(jogador._id);
 
       // Valida se participou do sorteio da partida, se é Associado, E se o nome não é um placeholder
-      // Lista de termos a serem filtrados (placeholders), em minúsculas e sem acentos/caracteres especiais
-      const placeholderTerms = [
-        'convidado / outro', 'convidado', 'visitante', 'outro', 'teste', 'jogador teste'
+      // Reutiliza a lógica de placeholder para consistência
+      const placeholderTermsLogin = [
+        'convidado / outro', 'convidado', 'visitante', 'outro', 'teste', 'jogador teste',
+        'convidado / visitante', 'convidado(a)', 'convidado(s)', 'visitante(s)', 'jogador convidado'
       ];
-      const isPlaceholder = placeholderTerms.some(term => jogador.nome?.trim().toLowerCase().includes(term));
+      const isPlaceholder = placeholderTermsLogin.some(term => {
+        const cleanedName = jogador.nome?.trim().toLowerCase();
+        return cleanedName === term || cleanedName.includes(term);
+      });
+
+      console.log(`[DEBUG - AUTH-JOGADOR] Tentativa de login para "${jogador.nome}" (Nível: ${jogador.nivel}). Participou: ${participantesIds.includes(jogadorIdStr)}, Associado: ${jogador.nivel === 'Associado'}, É Placeholder: ${isPlaceholder}.`);
 
       if (!participantesIds.includes(jogadorIdStr) || 
           jogador.nivel !== 'Associado' || 
-          isPlaceholder) { // Adiciona a verificação de placeholder aqui também
-        console.warn(`[BLOQUEIO] ${jogador.nome} (${jogador.nivel}) tentou votar. Participou: ${participantesIds.includes(jogadorIdStr)}, Associado: ${jogador.nivel === 'Associado'}, É Placeholder: ${isPlaceholder}.`);
+          isPlaceholder) {
+        console.warn(`[BLOQUEIO] ${jogador.nome} (${jogador.nivel}) foi barrado na votação.`);
         return res.status(403).json({ 
           success: false, 
           message: 'Você não participou desta partida e não pode votar.' 

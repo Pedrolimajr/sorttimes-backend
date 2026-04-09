@@ -56,6 +56,9 @@ router.get('/:linkId', async (req, res) => {
     }
 
     let nomesJogadores = [];
+    // Converte para objeto plano para podermos filtrar a lista de participantes que vai para o front
+    // Isso garante que se o VotacaoPartida.jsx usar data.participantes, ele já receba filtrado.
+    const partidaData = link.partidaId ? link.partidaId.toObject() : null;
 
     // Lista de termos a serem filtrados (placeholders), em minúsculas e sem acentos/caracteres especiais
     const placeholderTerms = [
@@ -71,44 +74,27 @@ router.get('/:linkId', async (req, res) => {
       return placeholderTerms.some(term => cleanedName === term || cleanedName.includes(term));
     };
 
-    console.log('[DEBUG - GET /:linkId] --- INÍCIO DO FILTRO ---');
-    console.log('[DEBUG - GET /:linkId] Tipo do Link:', link.tipo);
-    
     if (link.tipo === 'votacao' || !link.tipo) {
-      const participantes = link.partidaId?.participantes || [];
-      
-      console.log('[DEBUG - GET /:linkId] Participantes brutos (nome, nivel):');
-      participantes.forEach(p => {
-        if (p) console.log(`  - ID: ${p._id}, Nome: "${p.nome}", Nível: "${p.nivel}"`);
-      });
-
-      nomesJogadores = participantes
-        .filter(j => {
-          if (!j || !j.nome || !j.nivel) {
-            console.log(`[DEBUG - GET /:linkId] Ignorando participante inválido/incompleto: ${JSON.stringify(j)}`);
-            return false;
-          }
-          const isAssociado = j.nivel === 'Associado';
-          const isPlaceholder = isPlaceholderName(j.nome);
-          
-          console.log(`[DEBUG - GET /:linkId] Processando "${j.nome}" (Nível: ${j.nivel}): Associado=${isAssociado}, Placeholder=${isPlaceholder}`);
-
+      if (partidaData && partidaData.participantes) {
+        // Filtra a lista de participantes que o frontend pode estar usando (populada no partidaId)
+        partidaData.participantes = partidaData.participantes.filter(j => {
+          const isAssociado = j && j.nivel === 'Associado';
+          const isPlaceholder = isPlaceholderName(j?.nome);
           return isAssociado && !isPlaceholder;
-        })
-        .map(j => j.nome)
-        .sort();
+        });
+      }
+
+      // A lista de nomes simplificada também fica filtrada
+      nomesJogadores = (partidaData?.participantes || []).map(j => j.nome).sort();
     } else {
       // Para eventos live (Gols/Cartões), mantém a lista de todos os jogadores ativos (pode haver gol de convidado)
       const jogadores = await Jogador.find({ ativo: { $ne: false } }).select('nome').sort({ nome: 1 });
       nomesJogadores = jogadores.map(j => j.nome).filter(nome => !isPlaceholderName(nome));
     }
-    
-    console.log('[DEBUG - GET /:linkId] Nomes de jogadores filtrados para o frontend:', nomesJogadores);
-    console.log('[DEBUG - GET /:linkId] --- FIM DO FILTRO ---');
 
     res.json({ 
       success: true, 
-      data: link.partidaId, // Usar 'link.partidaId' que já está populado
+      data: partidaData, // Retorna o objeto partida com participantes já filtrados
       jogadores: nomesJogadores
     });
   } catch (error) {

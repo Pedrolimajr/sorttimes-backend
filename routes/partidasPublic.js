@@ -48,7 +48,7 @@ router.get('/:linkId', async (req, res) => {
     // Popula o link e a partida com os participantes e seus nomes/níveis
     const link = await LinkPartida.findOne({ linkId: req.params.linkId }).populate({
       path: 'partidaId',
-      populate: { path: 'participantes', select: 'nome nivel' }
+      populate: { path: 'participantes', select: 'nome nivel foto' }
     });
 
     if (!link) {
@@ -95,7 +95,8 @@ router.get('/:linkId', async (req, res) => {
     res.json({ 
       success: true, 
       data: partidaData, // Retorna o objeto partida com participantes já filtrados
-      jogadores: nomesJogadores
+      jogadores: nomesJogadores,
+      expireAt: link.expireAt
     });
   } catch (error) {
     console.error('Erro ao buscar dados do link:', error);

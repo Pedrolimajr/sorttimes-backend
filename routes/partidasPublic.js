@@ -64,13 +64,18 @@ router.get('/:linkId', async (req, res) => {
     if (link.tipo === 'votacao' || !link.tipo) {
       const participantes = linkPopulated.partidaId?.participantes || [];
       nomesJogadores = participantes
-        .filter(j => j && j.nivel === 'Associado')
+        .filter(j => 
+          j && 
+          j.nivel === 'Associado' && 
+          j.nome !== 'Convidado / Outro' && 
+          j.nome !== 'Convidado'
+        )
         .map(j => j.nome)
         .sort();
     } else {
       // Para eventos live (Gols/Cartões), mantém a lista de todos os jogadores ativos (pode haver gol de convidado)
       const jogadores = await Jogador.find({ ativo: { $ne: false } }).select('nome').sort({ nome: 1 });
-      nomesJogadores = jogadores.map(j => j.nome);
+      nomesJogadores = jogadores.map(j => j.nome).filter(nome => nome !== 'Convidado / Outro' && nome !== 'Convidado');
     }
     
     res.json({ 

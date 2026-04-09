@@ -254,13 +254,16 @@ router.post('/:linkId/auth-jogador', async (req, res) => {
       const jogadorIdStr = String(jogador._id);
 
       // Valida se participou do sorteio da partida, se é Associado, E se o nome não é um placeholder
-      const nomeLimpoJogador = jogador.nome?.trim().toLowerCase();
-      const isPlaceholder = nomeLimpoJogador === 'convidado / outro' || 
-                            nomeLimpoJogador === 'convidado' || 
-                            nomeLimpoJogador === 'visitante';
+      // Lista de termos a serem filtrados (placeholders), em minúsculas e sem acentos/caracteres especiais
+      const placeholderTerms = [
+        'convidado / outro', 'convidado', 'visitante', 'outro', 'teste', 'jogador teste'
+      ];
+      const isPlaceholder = placeholderTerms.some(term => jogador.nome?.trim().toLowerCase().includes(term));
 
-      if (!participantesIds.includes(jogadorIdStr) || jogador.nivel !== 'Associado' || isPlaceholder) {
-        console.warn(`[BLOQUEIO] ${jogador.nome} (${jogador.nivel}) tentou votar. Participou: ${participantesIds.includes(jogadorIdStr)}, Associado: ${jogador.nivel === 'Associado'}, Placeholder: ${isPlaceholder}.`);
+      if (!participantesIds.includes(jogadorIdStr) || 
+          jogador.nivel !== 'Associado' || 
+          isPlaceholder) { // Adiciona a verificação de placeholder aqui também
+        console.warn(`[BLOQUEIO] ${jogador.nome} (${jogador.nivel}) tentou votar. Participou: ${participantesIds.includes(jogadorIdStr)}, Associado: ${jogador.nivel === 'Associado'}, É Placeholder: ${isPlaceholder}.`);
         return res.status(403).json({ 
           success: false, 
           message: 'Você não participou desta partida e não pode votar.' 

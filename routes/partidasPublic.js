@@ -13,8 +13,8 @@ router.post('/gerar-link/:partidaId', auth, async (req, res) => {
     const { tipo } = req.body; // 'eventos' ou 'votacao'
     const linkId = uuidv4();
     
-    // Define expiração para 3 dias (72 horas)
-    const expireAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+    // Define expiração para 2 dias (48 horas)
+    const expireAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
 
     const novoLink = new LinkPartida({
       linkId,
@@ -23,8 +23,8 @@ router.post('/gerar-link/:partidaId', auth, async (req, res) => {
       tipo: tipo || 'eventos'
     });
 
-    await novoLink.save();
-    res.json({ success: true, linkId });
+    const savedLink = await novoLink.save();
+    res.json({ success: true, linkId: savedLink.linkId, expireAt: savedLink.expireAt });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Erro ao gerar link' });
   }

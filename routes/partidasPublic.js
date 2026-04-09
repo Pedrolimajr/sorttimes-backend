@@ -45,21 +45,26 @@ router.post('/vincular-participantes/:partidaId', auth, async (req, res) => {
 // Buscar dados da partida via link público
 router.get('/:linkId', async (req, res) => {
   try {
-    const link = await LinkPartida.findOne({ linkId: req.params.linkId }).populate({
-      path: 'partidaId',
-      populate: { path: 'participantes', select: 'nome nivel' }
-    });
-
+    const link = await LinkPartida.findOne({ linkId: req.params.linkId });
+    
     if (!link) {
       return res.status(404).json({ success: false, message: 'Link expirado ou inexistente' });
     }
 
+    // Busca novamente populando os dados da partida e dos participantes para garantir o filtro
+    const linkPopulated = await LinkPartida.findById(link._id).populate({
+      path: 'partidaId',
+      populate: { path: 'participantes', select: 'nome nivel' }
+    });
+
     let nomesJogadores = [];
 
-    // Se for link de votação, filtra a lista de nomes apenas para Associados que participaram da partida
-    if (link.tipo === 'votacao') {
-      nomesJogadores = (link.partidaId.participantes || [])
-        .filter(j => j.nivel === 'Associado')
+    // Se for link de votação (tipo 'votacao' ou sem tipo para compatibilidade), 
+    // filtra a lista de nomes apenas para Associados que participaram da partida sorteada
+    if (link.tipo === 'votacao' || !link.tipo) {
+      const participantes = linkPopulated.partidaId?.participantes || [];
+      nomesJogadores = participantes
+        .filter(j => j && j.nivel === 'Associado')
         .map(j => j.nome)
         .sort();
     } else {
@@ -70,10 +75,11 @@ router.get('/:linkId', async (req, res) => {
     
     res.json({ 
       success: true, 
-      data: link.partidaId,
+      data: linkPopulated.partidaId,
       jogadores: nomesJogadores
     });
   } catch (error) {
+    console.error('Erro ao buscar dados do link:', error);
     res.status(500).json({ success: false, message: 'Erro ao buscar partida' });
   }
 });
@@ -235,12 +241,12 @@ router.post('/:linkId/auth-jogador', async (req, res) => {
       const participantesIds = (partida.participantes || []).map(p => String(p));
       const jogadorIdStr = String(jogador._id);
 
-      // Valida se participou da partida E se é Associado
+      // Valida se participou do sorteio da partida E se o nível é 'Associado'
       if (!participantesIds.includes(jogadorIdStr) || jogador.nivel !== 'Associado') {
-        console.warn(`[BLOQUEIO] ${jogador.nome} (${jogador.nivel}) tentou acessar a votação.`);
+        console.warn(`[ACESSO NEGADO] ${jogador.nome} (${jogador.nivel}) tentou votar sem estar no sorteio ou não ser associado.`);
         return res.status(403).json({ 
           success: false, 
-          message: 'Acesso negado. Apenas associados que participaram da partida podem votar.' 
+          message: 'Você não participou desta partida e não pode votar.' 
         });
       }
     }

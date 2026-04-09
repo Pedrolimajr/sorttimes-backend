@@ -56,14 +56,14 @@ router.get('/:linkId', async (req, res) => {
 
     let nomesJogadores = [];
 
-    // Se for link de votação, filtra a lista apenas para Associados que participaram do sorteio
+    // Se for link de votação, filtra a lista de nomes apenas para Associados que participaram da partida
     if (link.tipo === 'votacao') {
       nomesJogadores = (link.partidaId.participantes || [])
         .filter(j => j.nivel === 'Associado')
         .map(j => j.nome)
         .sort();
     } else {
-      // Para eventos live (Gols/Cartões), mantém a lista de todos os jogadores ativos
+      // Para eventos live (Gols/Cartões), mantém a lista de todos os jogadores ativos (pode haver gol de convidado)
       const jogadores = await Jogador.find({ ativo: { $ne: false } }).select('nome').sort({ nome: 1 });
       nomesJogadores = jogadores.map(j => j.nome);
     }
@@ -230,14 +230,14 @@ router.post('/:linkId/auth-jogador', async (req, res) => {
     // Verifica se já votou nesta partida
     const partida = await Partida.findById(link.partidaId);
 
-    // BLOQUEIO RIGOROSO: Apenas Associados sorteados podem acessar a votação
+    // BLOQUEIO RIGOROSO: Apenas Associados sorteados na partida podem acessar a votação
     if (link.tipo === 'votacao' || !link.tipo) {
       const participantesIds = (partida.participantes || []).map(p => String(p));
       const jogadorIdStr = String(jogador._id);
 
-      // Verifica se está na lista de participantes E se o nível é 'Associado'
+      // Valida se participou da partida E se é Associado
       if (!participantesIds.includes(jogadorIdStr) || jogador.nivel !== 'Associado') {
-        console.warn(`[ACESSO NEGADO] ${jogador.nome} (${jogador.nivel}) tentou votar.`);
+        console.warn(`[BLOQUEIO] ${jogador.nome} (${jogador.nivel}) tentou acessar a votação.`);
         return res.status(403).json({ 
           success: false, 
           message: 'Acesso negado. Apenas associados que participaram da partida podem votar.' 

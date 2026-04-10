@@ -46,9 +46,9 @@ router.post('/vincular-participantes/:partidaId', auth, async (req, res) => {
 router.get('/:linkId', async (req, res) => {
   try {
     // Popula o link e a partida com os participantes e seus nomes/níveis
-    const link = await LinkPartida.findOne({ linkId: req.params.linkId }).populate({
-      path: 'partidaId',
-      populate: { path: 'participantes', select: 'nome nivel foto' }
+    const link = await LinkPartida.findOne({ linkId: req.params.linkId }).populate({ // MODIFICAÇÃO: Incluir _id no select
+      path: 'partidaId', 
+      populate: { path: 'participantes', select: 'nome nivel foto _id' } 
     });
 
     if (!link) {

@@ -465,7 +465,8 @@ app.post('/api/presenca/:linkId/auth', async (req, res) => {
       jogador: {
         id: String(jogador._id),
         nome: jogador.nome,
-        presente: !!jogadorNoLink.presente
+        presente: !!jogadorNoLink.presente,
+        foto: jogador.foto
       },
       sessionId
     });

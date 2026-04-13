@@ -30,6 +30,17 @@ router.post('/gerar-link/:partidaId', auth, async (req, res) => {
   }
 });
 
+// Buscar links existentes para uma partida específica (Apenas Admin)
+router.get('/links-por-partida/:partidaId', auth, async (req, res) => {
+  try {
+    const { partidaId } = req.params;
+    const links = await LinkPartida.find({ partidaId });
+    res.json({ success: true, links });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro ao buscar links' });
+  }
+});
+
 // Vincular participantes a uma partida (vindo do sorteio)
 router.post('/vincular-participantes/:partidaId', auth, async (req, res) => {
   try {

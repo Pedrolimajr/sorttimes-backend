@@ -74,7 +74,10 @@ router.get('/:linkId', async (req, res) => {
       return placeholderTerms.some(term => cleanedName === term || cleanedName.includes(term));
     };
 
-    if (link.tipo === 'votacao' || !link.tipo) {
+    // Se for link de votação, mantemos apenas os participantes do sorteio (Associados)
+    // Se o tipo for undefined (links antigos), tratamos agora como 'eventos' para mostrar a lista geral
+    // conforme solicitado, permitindo registrar gols de qualquer associado.
+    if (link.tipo === 'votacao') {
       if (partidaData && partidaData.participantes) {
         // Filtra a lista de participantes que o frontend pode estar usando (populada no partidaId)
         partidaData.participantes = partidaData.participantes.filter(j => {
@@ -87,8 +90,12 @@ router.get('/:linkId', async (req, res) => {
       // A lista de nomes simplificada também fica filtrada
       nomesJogadores = (partidaData?.participantes || []).map(j => j.nome).sort();
     } else {
-      // Para eventos live (Gols/Cartões), mantém a lista de todos os jogadores ativos (pode haver gol de convidado)
-      const jogadores = await Jogador.find({ ativo: { $ne: false } }).select('nome').sort({ nome: 1 });
+      // Para eventos live (Gols/Cartões), buscamos a lista de TODOS os jogadores 
+      // que são 'Associado' e que não estão bloqueados (ativo !== false).
+      const jogadores = await Jogador.find({ 
+        ativo: { $ne: false },
+        nivel: 'Associado'
+      }).select('nome').sort({ nome: 1 });
       nomesJogadores = jogadores.map(j => j.nome).filter(nome => !isPlaceholderName(nome));
     }
 

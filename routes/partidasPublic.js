@@ -13,14 +13,15 @@ router.post('/gerar-link/:partidaId', auth, async (req, res) => {
     const { tipo } = req.body; // 'eventos' ou 'votacao'
     const linkId = uuidv4();
     
-    // Define expiração para 2 dias (48 horas)
-    const expireAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+    // Define expiração para 1 dia (24 horas)
+    const expireAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     const novoLink = new LinkPartida({
       linkId,
       partidaId,
       expireAt,
-      tipo: tipo || 'eventos'
+      tipo: tipo || 'eventos',
+      dataCriacao: new Date()
     });
 
     const savedLink = await novoLink.save();

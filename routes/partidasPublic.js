@@ -19,10 +19,12 @@ router.post('/gerar-link/:partidaId', auth, async (req, res) => {
     const novoLink = new LinkPartida({
       linkId,
       partidaId,
-      expireAt,
-      tipo: tipo || 'eventos',
-      dataCriacao: new Date()
+      tipo: tipo || 'eventos'
     });
+
+    // Força a inclusão dos campos no banco, ignorando as restrições do Schema (strict: false)
+    novoLink.set('expireAt', expireAt, { strict: false });
+    novoLink.set('dataCriacao', new Date(), { strict: false });
 
     const savedLink = await novoLink.save();
     res.json({ success: true, linkId: savedLink.linkId, expireAt: savedLink.expireAt });

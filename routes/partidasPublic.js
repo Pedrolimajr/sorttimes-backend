@@ -24,12 +24,7 @@ router.post('/gerar-link/:partidaId', auth, async (req, res) => {
     });
 
     const savedLink = await novoLink.save();
-    res.json({ 
-      success: true, 
-      linkId: savedLink.linkId, 
-      expireAt: savedLink.expireAt,
-      createdAt: savedLink.createdAt || new Date()
-    });
+    res.json({ success: true, linkId: savedLink.linkId, expireAt: savedLink.expireAt });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Erro ao gerar link' });
   }

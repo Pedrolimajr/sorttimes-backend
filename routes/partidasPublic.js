@@ -313,43 +313,6 @@ router.post('/:linkId/auth-jogador', async (req, res) => {
   }
 });
 
-// Buscar todos os links ativos de uma partida (Admin)
-router.get('/links-por-partida/:partidaId', auth, async (req, res) => {
-  try {
-    const links = await LinkPartida.find({ partidaId: req.params.partidaId });
-    res.json({ success: true, links });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Erro ao buscar links da partida' });
-  }
-});
-
-// Encerrar votação e gerar link de resultado (12h)
-router.post('/:linkId/encerrar-votacao', async (req, res) => {
-  try {
-    const linkOriginal = await LinkPartida.findOne({ linkId: req.params.linkId });
-    if (!linkOriginal) return res.status(404).json({ success: false, message: 'Link não encontrado' });
-
-    const newLinkId = uuidv4();
-    // Expira em exatas 12 horas
-    const expireAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
-
-    const linkResultado = new LinkPartida({
-      linkId: newLinkId,
-      partidaId: linkOriginal.partidaId,
-      tipo: 'resultado'
-    });
-    linkResultado.set('expireAt', expireAt, { strict: false });
-
-    await linkResultado.save();
-    // Remove o link de votação original conforme solicitado
-    await LinkPartida.deleteOne({ _id: linkOriginal._id });
-
-    res.json({ success: true, linkId: newLinkId });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Erro ao encerrar votação e gerar resultado' });
-  }
-});
-
 // Autenticação do Admin na Votação
 router.post('/:linkId/auth-admin', async (req, res) => {
   const username = (req.body.username || '').trim();
@@ -416,3 +379,4 @@ router.patch('/:linkId/destaques', async (req, res) => {
 });
 
 module.exports = router;
+

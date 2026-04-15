@@ -13,8 +13,9 @@ router.post('/gerar-link/:partidaId', auth, async (req, res) => {
     const { tipo } = req.body; // 'eventos' ou 'votacao'
     const linkId = uuidv4();
     
-    // Define expiração para 1 dia (24 horas)
-    const expireAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    // Define expiração: 12h para resultados, 24h para o restante
+    const tempoExpiracao = tipo === 'resultado' ? 12 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+    const expireAt = new Date(Date.now() + tempoExpiracao);
 
     const novoLink = new LinkPartida({
       linkId,
@@ -106,7 +107,8 @@ router.get('/:linkId', async (req, res) => {
       success: true, 
       data: partidaData, // Retorna o objeto partida com participantes já filtrados
       jogadores: nomesJogadores,
-      expireAt: link.expireAt
+      expireAt: link.expireAt,
+      tipo: link.tipo // Adicionado para o front saber se é votação ou apenas visualização
     });
   } catch (error) {
     console.error('Erro ao buscar dados do link:', error);

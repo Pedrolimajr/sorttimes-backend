@@ -313,6 +313,16 @@ router.post('/:linkId/auth-jogador', async (req, res) => {
   }
 });
 
+// Buscar todos os links ativos de uma partida (Admin)
+router.get('/links-por-partida/:partidaId', auth, async (req, res) => {
+  try {
+    const links = await LinkPartida.find({ partidaId: req.params.partidaId });
+    res.json({ success: true, links });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro ao buscar links da partida' });
+  }
+});
+
 // Encerrar votação e gerar link de resultado (12h)
 router.post('/:linkId/encerrar-votacao', async (req, res) => {
   try {

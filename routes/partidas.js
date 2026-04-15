@@ -92,17 +92,21 @@ router.delete('/:id', async (req, res) => {
 router.patch('/:partidaId/evento/gol/by-name', async (req, res) => {
   try {
     const { partidaId } = req.params;
-    const { oldName, newName } = req.body;
+    const { oldName, newName, newTime, newQuantity } = req.body;
 
     const partida = await Partida.findById(partidaId);
     if (!partida) return res.status(404).json({ success: false, message: 'Partida não encontrada' });
     if (partida.encerrada) return res.status(400).json({ success: false, message: 'Partida encerrada' });
 
     if (partida.gols) {
-      partida.gols = partida.gols.map(gol => {
-        if (gol.jogador === oldName) return { ...gol, jogador: newName };
-        return gol;
-      });
+      // Remove todos os gols antigos do jogador
+      partida.gols = partida.gols.filter(gol => gol.jogador !== oldName);
+      
+      // Adiciona a nova quantidade de gols com as configurações atualizadas
+      for (let i = 0; i < (parseInt(newQuantity) || 0); i++) {
+        partida.gols.push({ jogador: newName, time: newTime });
+      }
+
       partida.markModified('gols');
       await partida.save();
     }

@@ -241,9 +241,9 @@ router.post('/:linkId/auth-jogador', async (req, res) => {
     const nomeNormalizado = nome.trim().toLowerCase();
     const escapedNome = nomeNormalizado.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     
-    // Busca jogadores que começam com o nome digitado (permite nome + primeiro sobrenome)
+    // Busca jogadores que contenham o nome digitado (permite busca por nome ou sobrenome)
     const jogadores = await Jogador.find({ 
-      nome: { $regex: new RegExp(`^${escapedNome}(\\s|$)`, 'i') },
+      nome: { $regex: new RegExp(escapedNome, 'i') },
       ativo: { $ne: false }
     });
 
@@ -379,4 +379,3 @@ router.patch('/:linkId/destaques', async (req, res) => {
 });
 
 module.exports = router;
-

@@ -24,7 +24,6 @@ router.post('/gerar-link/:partidaId', auth, async (req, res) => {
     });
 
     // Força a inclusão dos campos no banco, ignorando as restrições do Schema (strict: false)
-    novoLink.set('tipo', tipo || 'eventos', { strict: false });
     novoLink.set('expireAt', expireAt, { strict: false });
     novoLink.set('dataCriacao', new Date(), { strict: false });
 
@@ -93,9 +92,7 @@ router.get('/:linkId', async (req, res) => {
       }
 
       // A lista de nomes simplificada também fica filtrada
-      nomesJogadores = (partidaData?.participantes || [])
-        .map(j => j.nome)
-        .sort();
+      nomesJogadores = (partidaData?.participantes || []).map(j => j.nome).sort();
     } else {
       // Para eventos live (Gols/Cartões), buscamos a lista de TODOS os jogadores 
       // que são 'Associado' e que não estão bloqueados (ativo !== false).
@@ -382,3 +379,4 @@ router.patch('/:linkId/destaques', async (req, res) => {
 });
 
 module.exports = router;
+

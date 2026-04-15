@@ -93,7 +93,9 @@ router.get('/:linkId', async (req, res) => {
       }
 
       // A lista de nomes simplificada também fica filtrada
-      nomesJogadores = (partidaData?.participantes || []).map(j => j.nome).sort();
+      nomesJogadores = (partidaData?.participantes || [])
+        .map(j => j.nome)
+        .sort();
     } else {
       // Para eventos live (Gols/Cartões), buscamos a lista de TODOS os jogadores 
       // que são 'Associado' e que não estão bloqueados (ativo !== false).

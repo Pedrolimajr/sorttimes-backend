@@ -24,6 +24,7 @@ router.post('/gerar-link/:partidaId', auth, async (req, res) => {
     });
 
     // Força a inclusão dos campos no banco, ignorando as restrições do Schema (strict: false)
+    novoLink.set('tipo', tipo || 'eventos', { strict: false });
     novoLink.set('expireAt', expireAt, { strict: false });
     novoLink.set('dataCriacao', new Date(), { strict: false });
 
@@ -379,4 +380,3 @@ router.patch('/:linkId/destaques', async (req, res) => {
 });
 
 module.exports = router;
-

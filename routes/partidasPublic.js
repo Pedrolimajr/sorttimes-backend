@@ -95,8 +95,8 @@ router.get('/:linkId', async (req, res) => {
     let participantesFiltrados = [];
     if (partidaData && partidaData.participantes && partidaData.participantes.length > 0) {
       participantesFiltrados = partidaData.participantes.filter(j => {
-        const isAssociado = j && (j.nivel === 'Associado');
-        const isPlaceholder = isPlaceholderName(j?.nome);
+        const isAssociado = j && j.nivel === 'Associado';
+        const isPlaceholder = isPlaceholderName(j.nome);
         return isAssociado && !isPlaceholder;
       });
       // Atualiza a lista de participantes no objeto da partida com o filtro aplicado

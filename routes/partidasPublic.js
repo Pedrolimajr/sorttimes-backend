@@ -90,28 +90,26 @@ router.get('/:linkId', async (req, res) => {
       return placeholderTerms.some(term => cleanedName === term || cleanedName.includes(term));
     };
 
-    // Se for link de votação, mantemos apenas os participantes do sorteio (Associados)
-    // Se o tipo for undefined (links antigos), tratamos agora como 'eventos' para mostrar a lista geral
-    // conforme solicitado, permitindo registrar gols de qualquer associado.
-    if (link.tipo === 'votacao') {
-      if (partidaData && partidaData.participantes) {
-        // Filtra a lista de participantes que o frontend pode estar usando (populada no partidaId)
-        partidaData.participantes = partidaData.participantes.filter(j => {
-          const isAssociado = j && j.nivel === 'Associado';
-          const isPlaceholder = isPlaceholderName(j?.nome);
-          return isAssociado && !isPlaceholder;
-        });
-      }
+    // Task 1 & 2: Unifica a lógica para que tanto eventos quanto votação usem os nomes do sorteio se disponíveis.
+    // Filtra para ocultar CONVIDADOS (mantendo apenas Associados) e remover termos de placeholder.
+    let participantesFiltrados = [];
+    if (partidaData && partidaData.participantes && partidaData.participantes.length > 0) {
+      participantesFiltrados = partidaData.participantes.filter(j => {
+        const isAssociado = j && (j.nivel === 'Associado');
+        const isPlaceholder = isPlaceholderName(j?.nome);
+        return isAssociado && !isPlaceholder;
+      });
+      // Atualiza a lista de participantes no objeto da partida com o filtro aplicado
+      partidaData.participantes = participantesFiltrados;
+    }
 
-      // A lista de nomes simplificada também fica filtrada
-      nomesJogadores = (partidaData?.participantes || []).map(j => j.nome).sort();
+    if (participantesFiltrados.length > 0) {
+      // Se houve sorteio vinculado, a lista pega apenas esses nomes (Associados)
+      nomesJogadores = participantesFiltrados.map(j => j.nome).sort();
     } else {
-      // Para eventos live (Gols/Cartões), buscamos a lista de TODOS os jogadores 
-      // que são 'Associado' e que não estão bloqueados (ativo !== false).
-      const jogadores = await Jogador.find({ 
-        ativo: { $ne: false },
-        nivel: 'Associado'
-      }).select('nome').sort({ nome: 1 });
+      // Fallback: Se não houve sorteio, mostra todos os Associados ativos do sistema
+      const filtroGlobal = { ativo: { $ne: false }, nivel: 'Associado' };
+      const jogadores = await Jogador.find(filtroGlobal).select('nome').sort({ nome: 1 });
       nomesJogadores = jogadores.map(j => j.nome).filter(nome => !isPlaceholderName(nome));
     }
 

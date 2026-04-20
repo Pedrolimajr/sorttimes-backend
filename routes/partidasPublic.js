@@ -390,4 +390,37 @@ router.patch('/:linkId/destaques', async (req, res) => {
   }
 });
 
+// Encerrar votação e gerar link de resultados (Admin)
+router.post('/:linkId/encerrar-votacao', async (req, res) => {
+  try {
+    const { linkId } = req.params;
+    const linkOriginal = await LinkPartida.findOne({ linkId });
+
+    if (!linkOriginal) {
+      return res.status(404).json({ success: false, message: 'Link não encontrado' });
+    }
+
+    const partidaId = linkOriginal.partidaId;
+    const novoLinkId = uuidv4();
+    // O link de resultado dura 12 horas conforme solicitado no front anteriormente
+    const expireAt = new Date(Date.now() + 12 * 60 * 60 * 1000); 
+
+    const novoLink = new LinkPartida({
+      linkId: novoLinkId,
+      partidaId,
+      tipo: 'resultado'
+    });
+
+    novoLink.set('expireAt', expireAt, { strict: false });
+    await novoLink.save();
+
+    // Remove o link de votação original
+    await LinkPartida.deleteOne({ linkId });
+
+    res.json({ success: true, linkId: novoLinkId });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro ao encerrar votação' });
+  }
+});
+
 module.exports = router;

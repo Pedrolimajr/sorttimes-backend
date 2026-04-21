@@ -764,7 +764,6 @@ const io = new Server(server, {
     allowedHeaders: ['my-custom-header']
   }
 });
-app.set('io', io); // Disponibiliza o socket para as rotas
 
 // Encerramento gracioso do servidor
 const shutdown = (signal) => {

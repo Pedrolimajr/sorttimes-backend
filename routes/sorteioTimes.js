@@ -226,8 +226,10 @@ router.post('/sortear', async (req, res) => {
       };
     });
 
-    // Calcula quantidade de times baseado em jogadores por time
-    const qtdTimesCalculada = Math.ceil(jogadoresComPosicoesAtualizadas.length / jogadoresPorTime) || quantidadeTimes;
+    // Define a quantidade de times: 
+    // Prioriza o que foi enviado pelo frontend (quantidadeTimes).
+    // Se não enviado, calcula pela lotação, mas garante no mínimo 2 times.
+    const qtdTimesCalculada = req.body.quantidadeTimes || Math.max(2, Math.ceil(jogadoresComPosicoesAtualizadas.length / jogadoresPorTime));
 
     // Distribui os jogadores nos times conforme o tipo de balanceamento
     let times;

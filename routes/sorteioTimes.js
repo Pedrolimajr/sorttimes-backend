@@ -282,9 +282,13 @@ router.post('/sortear', async (req, res) => {
     const sorteioSalvo = await novoSorteio.save();
 
     // --- Vínculo Automático com a Agenda ---
-    if (partidaId && partidaId.match(/^[0-9a-fA-F]{24}$/)) {
-      const participantesIds = jogadores.map(j => j._id);
-      await Partida.findByIdAndUpdate(partidaId, { participantes: participantesIds });
+    const idPartidaValido = req.body.partidaId || partidaId;
+    if (idPartidaValido && idPartidaValido.match(/^[0-9a-fA-F]{24}$/)) {
+      const participantesIds = jogadores.map(j => j._id.toString());
+      console.log(`[VINCULO] Atualizando partida ${idPartidaValido} com ${participantesIds.length} jogadores`);
+      await Partida.findByIdAndUpdate(idPartidaValido, { 
+        participantes: participantesIds 
+      });
     }
 
     // Emite para todos os dispositivos conectados que um novo sorteio foi feito

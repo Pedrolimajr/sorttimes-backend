@@ -4,6 +4,7 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const Jogador = require('../models/Jogador');
 const Sorteio = require('../models/Sorteio');
+const Partida = require('../models/Partida');
 const multer = require('multer');
 const { v2: cloudinary } = require('cloudinary');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
@@ -192,7 +193,8 @@ router.post('/sortear', async (req, res) => {
       balanceamento = BALANCEAMENTOS.ALEATORIO,
       posicoes = {}, // Posições modificadas para jogadores específicos
       posicaoUnica = null, // Nova propriedade para posição única para todos
-      posicoesEspecificas = {}, // Ex: { 'Goleiro': 1 } - 1 goleiro por time
+      posicoesEspecificas = {}, // Ex: { 'Goleiro': 1 }
+      partidaId = null, // ID da partida para vínculo automático
       jogadoresPorTime = 7 
     } = req.body;
     
@@ -278,6 +280,12 @@ router.post('/sortear', async (req, res) => {
     });
 
     const sorteioSalvo = await novoSorteio.save();
+
+    // --- Vínculo Automático com a Agenda ---
+    if (partidaId && partidaId.match(/^[0-9a-fA-F]{24}$/)) {
+      const participantesIds = jogadores.map(j => j._id);
+      await Partida.findByIdAndUpdate(partidaId, { participantes: participantesIds });
+    }
 
     // Emite para todos os dispositivos conectados que um novo sorteio foi feito
     const io = req.app.get('io');

@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const Jogador = require('../models/Jogador');
+const Sorteio = require('../models/Sorteio');
 const multer = require('multer');
 const { v2: cloudinary } = require('cloudinary');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
@@ -148,6 +149,40 @@ const validateObjectId = (req, res, next) => {
   next();
 };
 
+// --- Rotas de Histórico Global ---
+
+// GET /api/sorteio-times/historico - Busca os últimos sorteios salvos no banco
+router.get('/historico', async (req, res) => {
+  try {
+    const historico = await Sorteio.find()
+      .sort({ createdAt: -1 })
+      .limit(10);
+    res.json({ success: true, data: historico });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro ao buscar histórico' });
+  }
+});
+
+// DELETE /api/sorteio-times/historico/:id - Remove um sorteio específico
+router.delete('/historico/:id', validateObjectId, async (req, res) => {
+  try {
+    await Sorteio.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: 'Sorteio removido do histórico' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro ao remover sorteio' });
+  }
+});
+
+// DELETE /api/sorteio-times/historico - Limpa todo o histórico global
+router.delete('/historico', async (req, res) => {
+  try {
+    await Sorteio.deleteMany({});
+    res.json({ success: true, message: 'Histórico limpo com sucesso' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro ao limpar histórico' });
+  }
+});
+
 // Rota POST /api/sorteio-times/sortear
 router.post('/sortear', async (req, res) => {
   try {
@@ -221,16 +256,34 @@ router.post('/sortear', async (req, res) => {
       };
     });
 
+    // --- Persistência Global ---
+    // Salva o resultado do sorteio no banco de dados
+    const novoSorteio = new Sorteio({
+      times: timesComInfo.map(t => ({
+        nome: t.nome,
+        quantidade: t.quantidade,
+        nivelMedio: t.nivelMedio,
+        jogadores: t.jogadores.map(j => ({
+          id: j._id.toString(),
+          nome: j.nome,
+          posicao: j.posicao,
+          nivel: converterNivelParaNumero(j.nivel)
+        }))
+      })),
+      jogadoresPresentes: jogadores.length,
+      balanceamento,
+      posicaoUnica: posicaoUnica || ''
+    });
+
+    const sorteioSalvo = await novoSorteio.save();
+
+    // Emite para todos os dispositivos conectados que um novo sorteio foi feito
+    const io = req.app.get('io');
+    if (io) io.emit('times-atualizados', sorteioSalvo.times);
+
     res.json({
       success: true,
-      data: {
-        times: timesComInfo,
-        balanceamento,
-        totalJogadores: jogadores.length,
-        jogadoresPorTime,
-        quantidadeTimes: qtdTimesCalculada,
-        posicaoUnicaAplicada: posicaoUnica // Retorna a posição única aplicada
-      }
+      data: sorteioSalvo
     });
   
   } catch (error) {

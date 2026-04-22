@@ -184,6 +184,22 @@ router.post('/historico', async (req, res) => {
   }
 });
 
+// Rota PUT /api/sorteio-times/historico/:id - Atualiza um sorteio específico no histórico
+router.put('/historico/:id', validateObjectId, async (req, res) => {
+  try {
+    const { times, jogadoresPresentes, partidaId } = req.body;
+    const sorteio = await Sorteio.findByIdAndUpdate(
+      req.params.id,
+      { times, jogadoresPresentes, partidaId },
+      { new: true }
+    );
+    if (!sorteio) return res.status(404).json({ success: false, message: 'Sorteio não encontrado' });
+    res.json({ success: true, data: sorteio });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro ao atualizar histórico' });
+  }
+});
+
 // Rota DELETE /api/sorteio-times/historico/:id - Remove um item específico
 router.delete('/historico/:id', async (req, res) => {
   try {

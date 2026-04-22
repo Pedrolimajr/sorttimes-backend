@@ -3,7 +3,22 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const Jogador = require('../models/Jogador');
-const Sorteio = require('../models/Sorteio');
+const mongoose = require('mongoose');
+
+// Definição do modelo Sorteio diretamente aqui para resolver o erro de módulo não encontrado
+// sem a necessidade de criar arquivos externos, garantindo compatibilidade no Render.
+const SorteioSchema = new mongoose.Schema({
+  times: { type: Array, required: true },
+  jogadoresPresentes: { type: Number, required: true },
+  balanceamento: { type: String, required: true },
+  posicaoUnica: { type: String },
+  data: { type: Date, default: Date.now },
+  // Vínculo opcional com partida para auditoria
+  partidaId: { type: mongoose.Schema.Types.ObjectId, ref: 'Partida' }
+}, { timestamps: true });
+
+const Sorteio = mongoose.models.Sorteio || mongoose.model('Sorteio', SorteioSchema);
+
 const multer = require('multer');
 const { v2: cloudinary } = require('cloudinary');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');

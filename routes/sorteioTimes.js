@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const Jogador = require('../models/Jogador');
+const Sorteio = require('../models/Sorteio');
 const multer = require('multer');
 const { v2: cloudinary } = require('cloudinary');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
@@ -136,6 +137,57 @@ function distribuirMisto(jogadores, quantidadeTimes, posicoesEspecificas = {}) {
 
 // Todas as rotas abaixo exigem autenticação
 router.use(auth);
+
+// Rota GET /api/sorteio-times/historico - Retorna os últimos 5 sorteios
+router.get('/historico', async (req, res) => {
+  try {
+    const historico = await Sorteio.find()
+      .sort({ data: -1 })
+      .limit(5);
+    res.json({ success: true, data: historico });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro ao buscar histórico' });
+  }
+});
+
+// Rota POST /api/sorteio-times/historico - Salva um novo sorteio
+router.post('/historico', async (req, res) => {
+  try {
+    const { times, jogadoresPresentes, balanceamento, posicaoUnica, data, partidaVinculadaId } = req.body;
+    const novoSorteio = new Sorteio({
+      times,
+      jogadoresPresentes,
+      balanceamento,
+      posicaoUnica,
+      data: data || new Date(),
+      partidaId: partidaVinculadaId || null
+    });
+    await novoSorteio.save();
+    res.status(201).json({ success: true, data: novoSorteio });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro ao salvar no histórico' });
+  }
+});
+
+// Rota DELETE /api/sorteio-times/historico/:id - Remove um item específico
+router.delete('/historico/:id', async (req, res) => {
+  try {
+    await Sorteio.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: 'Sorteio removido do histórico' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro ao remover sorteio' });
+  }
+});
+
+// Rota DELETE /api/sorteio-times/historico - Limpa todo o histórico
+router.delete('/historico', async (req, res) => {
+  try {
+    await Sorteio.deleteMany({});
+    res.json({ success: true, message: 'Histórico limpo com sucesso' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro ao limpar histórico' });
+  }
+});
 
 // Middleware para validar ObjectId
 const validateObjectId = (req, res, next) => {

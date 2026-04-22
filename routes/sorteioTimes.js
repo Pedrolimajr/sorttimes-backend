@@ -150,6 +150,17 @@ function distribuirMisto(jogadores, quantidadeTimes, posicoesEspecificas = {}) {
   });
 }
 
+// Middleware para validar ObjectId
+const validateObjectId = (req, res, next) => {
+  if (!req.params.id || !req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+    return res.status(400).json({ 
+      success: false,
+      message: 'ID inválido'
+    });
+  }
+  next();
+};
+
 // Todas as rotas abaixo exigem autenticação
 router.use(auth);
 
@@ -219,17 +230,6 @@ router.delete('/historico', async (req, res) => {
     res.status(500).json({ success: false, message: 'Erro ao limpar histórico' });
   }
 });
-
-// Middleware para validar ObjectId
-const validateObjectId = (req, res, next) => {
-  if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
-    return res.status(400).json({ 
-      success: false,
-      message: 'ID inválido'
-    });
-  }
-  next();
-};
 
 // Rota POST /api/sorteio-times/sortear
 router.post('/sortear', async (req, res) => {

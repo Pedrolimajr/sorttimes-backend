@@ -111,7 +111,6 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions)); // com a mesma configuração
 
-
 // Middleware para log de requisições
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', 'https://sorttimes-frontend.vercel.app');
@@ -243,14 +242,7 @@ app.get('/api/financeiro/backup', async (req, res) => {
 // POST - Gerar link de presença (admin / autenticado)
 app.post('/api/gerar-link-presenca', authMiddleware, async (req, res) => {
   try {
-    const { jogadores, dataJogo } = req.body;
-
-    if (!Array.isArray(jogadores) || jogadores.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Lista de jogadores é obrigatória para gerar o link'
-      });
-    }
+    const { dataJogo } = req.body;
 
     if (!dataJogo) {
       return res.status(400).json({
@@ -267,7 +259,7 @@ app.post('/api/gerar-link-presenca', authMiddleware, async (req, res) => {
 
     const novoLink = new LinkPresenca({
       linkId,
-      jogadores,
+      jogadores: [], // Inicializa vazio, pois a lista será dinâmica
       dataJogo: dataJogoDate
     });
     
@@ -330,85 +322,32 @@ app.get('/api/presenca/:linkId', async (req, res) => {
 app.post('/api/presenca/:linkId/auth', async (req, res) => {
   try {
     const { nome, password } = req.body; // password = DDMMAAAA
-
-    if (!nome || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Nome e senha são obrigatórios'
-      });
-    }
-
-    // Validação de formato no backend (nunca confiar só no front)
-    if (typeof password !== 'string' || !/^\d{8}$/.test(password)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Formato de senha inválido. Use DDMMAAAA.'
-      });
-    }
-
     const ip = getClientIp(req);
     const { linkId } = req.params;
-    const key = `${ip}:${linkId}`;
-    const now = new Date();
 
-    let attemptInfo = presencaAttempts.get(key) || {
-      attempts: 0,
-      blockedUntil: null,
-      lastAttemptAt: null
-    };
-
-    // Verifica bloqueio ativo
-    if (attemptInfo.blockedUntil && attemptInfo.blockedUntil > now) {
-      const remainingMs = attemptInfo.blockedUntil.getTime() - now.getTime();
-      console.warn(`IP bloqueado para presença. IP=${ip} Link=${linkId} Restante=${remainingMs}ms`);
-      return res.status(429).json({
-        success: false,
-        message: 'Muitas tentativas inválidas. Tente novamente em 10 minutos.'
-      });
-    }
-
+    // 1. Busca o link para validar existência
     const link = await LinkPresenca.findOne({ linkId });
+    if (!link) return res.status(404).json({ success: false, message: 'Link expirado' });
 
-    if (!link) {
-      return res.status(404).json({
-        success: false,
-        message: 'Link não encontrado ou expirado'
-      });
-    }
-
-    // Procura o jogador apenas dentro do contexto do link (sem expor lista)
-    const nomeNormalizado = nome.trim().toLowerCase();
-    const jogadorNoLink = link.jogadores.find(j => {
-      if (!j.nome) return false;
-      const dbNome = j.nome.trim().toLowerCase();
-      // Permite match exato ou se o nome no banco começa com o nome digitado (seguido de espaço)
-      // Ex: Input "Pedro Jr" encontra "Pedro Jr da Silva"
-      return dbNome === nomeNormalizado || dbNome.startsWith(nomeNormalizado + ' ');
+    // 2. Busca o jogador DIRETAMENTE na coleção principal (Sincronização em tempo real)
+    const escapedNome = nome.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const jogadores = await Jogador.find({ 
+      nome: { $regex: new RegExp(`^${escapedNome}`, 'i') },
+      nivel: 'Associado',
+      ativo: { $ne: false }
     });
 
-    if (!jogadorNoLink) {
-      // Atualiza tentativas para nome/IP inválido
-      attemptInfo.attempts += 1;
-      attemptInfo.lastAttemptAt = now;
+    if (jogadores.length === 0) return res.status(401).json({ success: false, message: 'Jogador não encontrado ou inativo.' });
 
-      if (attemptInfo.attempts >= 3) {
-        attemptInfo.blockedUntil = new Date(now.getTime() + 10 * 60 * 1000);
-        console.warn(`🚫 Bloqueio ativado por muitas tentativas inválidas. IP=${ip} Link=${linkId} Hora=${now.toISOString()}`);
-      }
-
-      presencaAttempts.set(key, attemptInfo);
-
-      const blocked = attemptInfo.blockedUntil && attemptInfo.blockedUntil > now;
-      return res.status(blocked ? 429 : 401).json({
-        success: false,
-        message: blocked
-          ? 'Muitas tentativas inválidas. Tente novamente em 10 minutos.'
-          : 'Nome ou senha inválidos.'
-      });
-    }
-
-    // Busca o jogador no banco para validar data de nascimento
-    const jogador = await Jogador.findById(jogadorNoLink.id || jogadorNoLink._id);
+    // 3. Valida a senha (Data de Nascimento)
+    const jogador = jogadores.find(j => {
+      if (!j.dataNascimento) return false;
+      const data = new Date(j.dataNascimento);
+      const dd = String(data.getDate()).padStart(2, '0');
+      const mm = String(data.getMonth() + 1).padStart(2, '0');
+      const yyyy = String(data.getFullYear());
+      return password === `${dd}${mm}${yyyy}`;
+    });
 
     if (!jogador || !jogador.dataNascimento) {
       return res.status(401).json({
@@ -417,35 +356,11 @@ app.post('/api/presenca/:linkId/auth', async (req, res) => {
       });
     }
 
-    const data = new Date(jogador.dataNascimento);
-    const dd = String(data.getDate()).padStart(2, '0');
-    const mm = String(data.getMonth() + 1).padStart(2, '0');
-    const yyyy = String(data.getFullYear());
-    const senhaCorreta = `${dd}${mm}${yyyy}`;
-
-    if (password !== senhaCorreta) {
-      // Senha incorreta: atualiza tentativas
-      attemptInfo.attempts += 1;
-      attemptInfo.lastAttemptAt = now;
-
-      if (attemptInfo.attempts >= 3) {
-        attemptInfo.blockedUntil = new Date(now.getTime() + 10 * 60 * 1000);
-        console.warn(`🚫 Bloqueio ativado por muitas tentativas inválidas. IP=${ip} Link=${linkId} Hora=${now.toISOString()}`);
-      }
-
-      presencaAttempts.set(key, attemptInfo);
-
-      const blocked = attemptInfo.blockedUntil && attemptInfo.blockedUntil > now;
-      return res.status(blocked ? 429 : 401).json({
-        success: false,
-        message: blocked
-          ? 'Muitas tentativas inválidas. Tente novamente em 10 minutos.'
-          : 'Nome ou senha inválidos.'
-      });
-    }
+    // Verifica se já está presente no LinkPresenca
+    const jogadorNoLink = link.jogadores.find(j => String(j.id || j._id) === String(jogador._id));
 
     // Autenticação bem-sucedida: limpa tentativas
-    presencaAttempts.delete(key);
+    presencaAttempts.delete(`${ip}:${linkId}`);
 
     // Cria sessão temporária exclusiva para este jogador
     const sessionId = uuidv4();
@@ -465,7 +380,7 @@ app.post('/api/presenca/:linkId/auth', async (req, res) => {
       jogador: {
         id: String(jogador._id),
         nome: jogador.nome,
-        presente: !!jogadorNoLink.presente,
+        presente: jogadorNoLink ? !!jogadorNoLink.presente : false,
         foto: jogador.foto
       },
       sessionId
@@ -522,12 +437,28 @@ app.post('/api/presenca/:linkId/admin-auth', async (req, res) => {
       });
     }
 
-    // Retorna todos os jogadores vinculados ao link, com status de presença
+    // 1. Busca todos os associados ativos no momento da consulta (Dinamismo)
+    const associadosAtivos = await Jogador.find({ 
+      nivel: 'Associado', 
+      ativo: { $ne: false } 
+    }).select('nome foto').sort({ nome: 1 });
+
+    // 2. Mapeia o status de presença armazenado no link
+    const jogadoresFinal = associadosAtivos.map(atleta => {
+      const presenca = link.jogadores.find(p => String(p.id || p._id) === String(atleta._id));
+      return {
+        id: atleta._id,
+        nome: atleta.nome,
+        foto: atleta.foto,
+        presente: presenca ? !!presenca.presente : false
+      };
+    });
+
     return res.json({
       success: true,
       data: {
         dataJogo: link.dataJogo,
-        jogadores: link.jogadores || []
+        jogadores: jogadoresFinal
       }
     });
   } catch (error) {
@@ -575,15 +506,21 @@ app.post('/api/presenca/:linkId/confirmar', async (req, res) => {
 
     const jogadorIndex = link.jogadores.findIndex(j => String(j.id || j._id) === String(jogadorIdEfetivo));
 
+    // Se o jogador não existe no array do link (foi cadastrado depois do link ser gerado)
+    // precisamos buscar os dados dele e adicionar ao link agora.
     if (jogadorIndex === -1) {
-      return res.status(404).json({
-        success: false,
-        message: 'Jogador não encontrado'
+      const atletaOriginal = await Jogador.findById(jogadorIdEfetivo);
+      if (!atletaOriginal) return res.status(404).json({ success: false, message: 'Jogador não existe.' });
+      
+      link.jogadores.push({
+        id: atletaOriginal._id,
+        nome: atletaOriginal.nome,
+        foto: atletaOriginal.foto,
+        presente: !!presente
       });
+    } else {
+      link.jogadores[jogadorIndex].presente = !!presente;
     }
-
-    // Atualiza o jogador
-    link.jogadores[jogadorIndex].presente = !!presente;
 
     // Informa que o campo foi modificado
     link.markModified('jogadores');
@@ -802,3 +739,5 @@ process.on('uncaughtException', (err) => {
   console.error('💥 Exceção não capturada:', err);
   shutdown('uncaughtException');
 });
+
+

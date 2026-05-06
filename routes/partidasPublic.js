@@ -90,31 +90,24 @@ router.get('/:linkId', async (req, res) => {
       return placeholderTerms.some(term => cleanedName === term || cleanedName.includes(term));
     };
 
-    // Se for link de votação, mantemos apenas os participantes do sorteio (Associados)
-    // Se o tipo for undefined (links antigos), tratamos agora como 'eventos' para mostrar a lista geral
-    // conforme solicitado, permitindo registrar gols de qualquer associado.
-    if (link.tipo === 'votacao') {
-      if (partidaData && partidaData.participantes) {
-        // Filtra a lista de participantes que o frontend pode estar usando (populada no partidaId)
-        partidaData.participantes = partidaData.participantes.filter(j => {
-          const isAssociado = j && j.nivel === 'Associado';
-          const isPlaceholder = isPlaceholderName(j?.nome);
-          const isAtivo = j && j.ativo !== false;
-          return isAssociado && !isPlaceholder && isAtivo;
-        });
-      }
-
-      // A lista de nomes simplificada também fica filtrada
-      nomesJogadores = (partidaData?.participantes || []).map(j => j.nome).sort();
-    } else {
-      // Para eventos live (Gols/Cartões), buscamos a lista de TODOS os jogadores 
-      // que são 'Associado' e que não estão bloqueados (ativo !== false).
-      const jogadores = await Jogador.find({ 
-        ativo: { $ne: false },
-        nivel: 'Associado'
-      }).select('nome').sort({ nome: 1 });
-      nomesJogadores = jogadores.map(j => j.nome).filter(nome => !isPlaceholderName(nome));
+    // Filtra participantes sorteados para garantir que apenas associados ativos apareçam (para Melhor/Pereba)
+    if (partidaData && partidaData.participantes) {
+      partidaData.participantes = partidaData.participantes.filter(j => {
+        const isAssociado = j && j.nivel === 'Associado';
+        const isPlaceholder = isPlaceholderName(j?.nome);
+        const isAtivo = j && j.ativo !== false;
+        return isAssociado && !isPlaceholder && isAtivo;
+      });
     }
+
+    // SEMPRE buscamos a lista de TODOS os associados ativos no sistema.
+    // Isso serve como base de confiança para validar quem pode receber votos em qualquer categoria.
+    const associadosAtivos = await Jogador.find({ 
+      ativo: { $ne: false },
+      nivel: 'Associado'
+    }).select('nome').sort({ nome: 1 });
+    
+    nomesJogadores = associadosAtivos.map(j => j.nome).filter(nome => !isPlaceholderName(nome));
 
     res.json({ 
       success: true, 

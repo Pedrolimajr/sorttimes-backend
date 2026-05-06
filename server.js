@@ -332,7 +332,7 @@ app.post('/api/presenca/:linkId/auth', async (req, res) => {
     // 2. Busca o jogador DIRETAMENTE na coleção principal (Sincronização em tempo real)
     const escapedNome = nome.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const jogadores = await Jogador.find({ 
-      nome: { $regex: new RegExp(`^${escapedNome}`, 'i') },
+      nome: { $regex: new RegExp(escapedNome, 'i') },
       nivel: 'Associado',
       ativo: { $ne: false }
     });
@@ -363,6 +363,7 @@ app.post('/api/presenca/:linkId/auth', async (req, res) => {
     presencaAttempts.delete(`${ip}:${linkId}`);
 
     // Cria sessão temporária exclusiva para este jogador
+    const now = new Date();
     const sessionId = uuidv4();
     const sessionDurationMinutes = 30;
     const expiresAt = new Date(now.getTime() + sessionDurationMinutes * 60 * 1000);
@@ -739,5 +740,3 @@ process.on('uncaughtException', (err) => {
   console.error('💥 Exceção não capturada:', err);
   shutdown('uncaughtException');
 });
-
-

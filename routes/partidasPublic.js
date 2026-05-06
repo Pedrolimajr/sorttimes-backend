@@ -64,7 +64,7 @@ router.get('/:linkId', async (req, res) => {
     // Popula o link e a partida com os participantes e seus nomes/níveis
     const link = await LinkPartida.findOne({ linkId: req.params.linkId }).populate({
       path: 'partidaId',
-      populate: { path: 'participantes', select: 'nome nivel foto' }
+      populate: { path: 'participantes', select: 'nome nivel foto ativo' }
     });
 
     if (!link) {
@@ -99,7 +99,8 @@ router.get('/:linkId', async (req, res) => {
         partidaData.participantes = partidaData.participantes.filter(j => {
           const isAssociado = j && j.nivel === 'Associado';
           const isPlaceholder = isPlaceholderName(j?.nome);
-          return isAssociado && !isPlaceholder;
+          const isAtivo = j && j.ativo !== false;
+          return isAssociado && !isPlaceholder && isAtivo;
         });
       }
 

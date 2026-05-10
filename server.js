@@ -333,7 +333,7 @@ app.post('/api/presenca/:linkId/auth', async (req, res) => {
     const escapedNome = nome.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const jogadores = await Jogador.find({ 
       nome: { $regex: new RegExp(escapedNome, 'i') },
-      nivel: 'Associado',
+      nivel: { $in: ['Associado', 'Convidado'] },
       ativo: { $ne: false }
     });
 
@@ -438,14 +438,14 @@ app.post('/api/presenca/:linkId/admin-auth', async (req, res) => {
       });
     }
 
-    // 1. Busca todos os associados ativos no momento da consulta (Dinamismo)
-    const associadosAtivos = await Jogador.find({ 
-      nivel: 'Associado', 
+    // 1. Busca todos os atletas ativos (Associados e Convidados) no momento da consulta (Dinamismo)
+    const atletasAtivos = await Jogador.find({ 
+      nivel: { $in: ['Associado', 'Convidado'] }, 
       ativo: { $ne: false } 
     }).select('nome foto').sort({ nome: 1 });
 
     // 2. Mapeia o status de presença armazenado no link
-    const jogadoresFinal = associadosAtivos.map(atleta => {
+    const jogadoresFinal = atletasAtivos.map(atleta => {
       const presenca = link.jogadores.find(p => String(p.id || p._id) === String(atleta._id));
       return {
         id: atleta._id,

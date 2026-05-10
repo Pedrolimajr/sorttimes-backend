@@ -93,21 +93,21 @@ router.get('/:linkId', async (req, res) => {
     // Filtra participantes sorteados para garantir que apenas associados ativos apareçam (para Melhor/Pereba)
     if (partidaData && partidaData.participantes) {
       partidaData.participantes = partidaData.participantes.filter(j => {
-        const isAssociado = j && j.nivel === 'Associado';
+        const isAtletaValido = j && (j.nivel === 'Associado' || j.nivel === 'Convidado');
         const isPlaceholder = isPlaceholderName(j?.nome);
         const isAtivo = j && j.ativo !== false;
-        return isAssociado && !isPlaceholder && isAtivo;
+        return isAtletaValido && !isPlaceholder && isAtivo;
       });
     }
 
-    // SEMPRE buscamos a lista de TODOS os associados ativos no sistema.
+    // SEMPRE buscamos a lista de TODOS os atletas ativos (Associados e Convidados) no sistema.
     // Isso serve como base de confiança para validar quem pode receber votos em qualquer categoria.
-    const associadosAtivos = await Jogador.find({ 
+    const atletasAtivos = await Jogador.find({ 
       ativo: { $ne: false },
-      nivel: 'Associado'
+      nivel: { $in: ['Associado', 'Convidado'] }
     }).select('nome').sort({ nome: 1 });
     
-    nomesJogadores = associadosAtivos.map(j => j.nome).filter(nome => !isPlaceholderName(nome));
+    nomesJogadores = atletasAtivos.map(j => j.nome).filter(nome => !isPlaceholderName(nome));
 
     res.json({ 
       success: true, 

@@ -367,9 +367,24 @@ app.post('/api/presenca/:linkId/auth', async (req, res) => {
     // Este token identifica o jogador em futuros acessos, de qualquer link de presença.
     const persistentToken = jwt.sign({ id: jogador._id }, process.env.JWT_PRIVATE_KEY, { expiresIn: '365d' });
 
+    // Cria uma sessão de curta duração para a confirmação imediata
+    const sessionId = uuidv4();
+    presencaSessions.set(sessionId, {
+      linkId,
+      jogadorId: String(jogador._id),
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000) // 30 minutos
+    });
+
     return res.json({
       success: true,
-      persistentToken // Envia o token para o frontend salvar
+      persistentToken, // Envia o token para o frontend salvar
+      sessionId, // Envia a sessão para uso imediato
+      jogador: {
+        id: String(jogador._id),
+        nome: jogador.nome,
+        foto: jogador.foto,
+        presente: !!jogadorNoLink?.presente
+      }
     });
   } catch (error) {
     console.error('Erro na autenticação de presença:', error);
@@ -499,69 +514,6 @@ app.post('/api/presenca/:linkId/admin-auth', async (req, res) => {
       success: false,
       message: 'Erro ao autenticar admin de presença'
     });
-  }
-});
-
-// POST - Autenticação do jogador por TELEFONE para confirmação de presença
-app.post('/api/presenca/:linkId/auth-telefone', async (req, res) => {
-  try {
-    const { telefone } = req.body;
-    const ip = getClientIp(req);
-    const { linkId } = req.params;
-
-    if (!telefone) {
-      return res.status(400).json({ success: false, message: 'Número de telefone é obrigatório.' });
-    }
-
-    // 1. Busca o link para validar existência
-    const link = await LinkPresenca.findOne({ linkId });
-    if (!link) return res.status(404).json({ success: false, message: 'Link expirado ou inválido.' });
-
-    // 2. Busca o jogador pelo número de telefone
-    // Remove caracteres não numéricos para uma busca mais flexível (ex: (11) 99999-9999 vs 11999999999)
-    const telefoneNumerico = telefone.replace(/\D/g, '');
-    const jogador = await Jogador.findOne({ 
-      telefone: telefoneNumerico,
-      ativo: { $ne: false } // Garante que apenas jogadores ativos possam logar
-    });
-
-    if (!jogador) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Nenhum jogador ativo encontrado com este número. Tente o login por nome e data de nascimento.' 
-      });
-    }
-
-    // Verifica se já está presente no LinkPresenca
-    const jogadorNoLink = link.jogadores.find(j => String(j.id || j._id) === String(jogador._id));
-
-    // Autenticação bem-sucedida: Cria sessão temporária
-    const now = new Date();
-    const sessionId = uuidv4();
-    const sessionDurationMinutes = 30;
-    const expiresAt = new Date(now.getTime() + sessionDurationMinutes * 60 * 1000);
-
-    presencaSessions.set(sessionId, {
-      linkId,
-      jogadorId: String(jogador._id),
-      expiresAt
-    });
-
-    console.log(`✅ Sessão de presença criada via TELEFONE. Jogador=${jogador.nome} Link=${linkId} IP=${ip} Expira=${expiresAt.toISOString()}`);
-
-    return res.json({
-      success: true,
-      jogador: {
-        id: String(jogador._id),
-        nome: jogador.nome,
-        presente: jogadorNoLink ? !!jogadorNoLink.presente : false,
-        foto: jogador.foto
-      },
-      sessionId
-    });
-  } catch (error) {
-    console.error('Erro na autenticação de presença por telefone:', error);
-    return res.status(500).json({ success: false, message: 'Erro ao autenticar presença por telefone.' });
   }
 });
 

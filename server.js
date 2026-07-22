@@ -19,6 +19,7 @@ const { v4: uuidv4 } = require('uuid');
 const LinkPresenca = require('./models/LinkPresenca');
 const LinkPartida = require('./models/LinkPartida');
 const Partida = require('./models/Partida');
+const TokenPresenca = require('./models/TokenPresenca'); // Importa o novo modelo
 
 // Controle em memória para tentativas de autenticação na confirmação de presença
 // Chave: `${ip}:${linkId}`
@@ -60,6 +61,7 @@ const connectDB = async () => {
       // Cria o índice na coleção diretamente para garantir que funcione mesmo sem estar no schema
       await LinkPresenca.collection.createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 });
       await LinkPartida.collection.createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 });
+      await TokenPresenca.collection.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
       console.log('✅ Índice TTL configurado para LinkPresenca');
       console.log('✅ Índice TTL configurado para LinkPartida');
     } catch (err) {
@@ -281,6 +283,93 @@ app.post('/api/gerar-link-presenca', authMiddleware, async (req, res) => {
   }
 });
 
+// POST - Gerar convites individuais por WhatsApp (admin / autenticado)
+app.post('/api/gerar-convites-individuais/:linkId', authMiddleware, async (req, res) => {
+  try {
+    const { linkId } = req.params;
+    const linkPresenca = await LinkPresenca.findOne({ linkId });
+
+    if (!linkPresenca) {
+      return res.status(404).json({ success: false, message: 'Link de presença não encontrado.' });
+    }
+
+    // Busca todos os jogadores ativos (não bloqueados) que possuem um número de telefone
+    const jogadores = await Jogador.find({
+      ativo: { $ne: false }, // Garante que o jogador não está bloqueado
+      telefone: { $exists: true, $ne: '' }
+    }).select('nome telefone');
+
+    if (jogadores.length === 0) {
+      return res.status(404).json({ success: false, message: 'Nenhum jogador ativo com telefone encontrado para enviar convites.' });
+    }
+
+    const convites = [];
+    const frontendUrl = process.env.FRONTEND_URL || 'https://sorttimes-frontend.vercel.app';
+
+    for (const jogador of jogadores) {
+      const token = uuidv4();
+      // O token expira junto com o link de presença principal, ou em 24h se o link não tiver expiração definida
+      const expiresAt = new Date(linkPresenca.expireAt || Date.now() + 24 * 60 * 60 * 1000);
+
+      // Cria ou atualiza o token para este jogador e link de presença
+      await TokenPresenca.findOneAndUpdate(
+        { linkPresencaId: linkPresenca._id, jogadorId: jogador._id },
+        { token, expiresAt },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+
+      const mensagem = encodeURIComponent(
+        `Olá, ${jogador.nome}! Confirme sua presença para o jogo do dia ${new Date(linkPresenca.dataJogo).toLocaleDateString('pt-BR')}. Acesse o link: ${frontendUrl}/presenca/confirmar/${token}`
+      );
+
+      // Remove caracteres não numéricos do telefone e adiciona o DDI do Brasil
+      const numeroLimpo = jogador.telefone.replace(/\D/g, '');
+      const ddi = '55';
+
+      convites.push({
+        nome: jogador.nome,
+        whatsappUrl: `https://wa.me/${ddi}${numeroLimpo}?text=${mensagem}`
+      });
+    }
+
+    return res.status(200).json({ success: true, convites });
+
+  } catch (error) {
+    console.error('Erro ao gerar convites individuais:', error);
+    return res.status(500).json({ success: false, message: 'Erro interno ao gerar convites.' });
+  }
+});
+
+// GET - Validar token de convite individual e retornar dados do jogador
+app.get('/api/validar-convite/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const convite = await TokenPresenca.findOne({ token }).populate('jogadorId').populate('linkPresencaId');
+
+    if (!convite || !convite.jogadorId || !convite.linkPresencaId) {
+      return res.status(404).json({ success: false, message: 'Convite inválido ou expirado.' });
+    }
+
+    const jogadorNoLink = convite.linkPresencaId.jogadores.find(j => String(j.id || j._id) === String(convite.jogadorId._id));
+
+    res.json({
+      success: true,
+      data: {
+        linkId: convite.linkPresencaId.linkId,
+        jogador: {
+          id: convite.jogadorId._id,
+          nome: convite.jogadorId.nome,
+          foto: convite.jogadorId.foto,
+          presente: jogadorNoLink ? !!jogadorNoLink.presente : false
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Erro ao validar convite:', error);
+    return res.status(500).json({ success: false, message: 'Erro ao validar convite.' });
+  }
+});
+
 // Helper para obter IP real do cliente
 const getClientIp = (req) => {
   const xForwardedFor = req.headers['x-forwarded-for'];
@@ -476,7 +565,7 @@ app.post('/api/presenca/:linkId/admin-auth', async (req, res) => {
 // - Fluxo admin (SorteioTimes): usa jogadorId diretamente (mantém funcionalidade atual)
 app.post('/api/presenca/:linkId/confirmar', async (req, res) => {
   try {
-    const { jogadorId, presente, sessionId } = req.body;
+    const { jogadorId, presente, sessionId, token } = req.body;
     const { linkId } = req.params;
 
     const link = await LinkPresenca.findOne({ linkId });
@@ -490,8 +579,8 @@ app.post('/api/presenca/:linkId/confirmar', async (req, res) => {
 
     let jogadorIdEfetivo = jogadorId;
 
-    // Se vier sessionId, trata como confirmação do próprio jogador autenticado
-    if (sessionId) {
+    // Prioridade 1: Sessão por senha (método antigo)
+    if (sessionId) { 
       const session = presencaSessions.get(sessionId);
       const now = new Date();
 
@@ -503,6 +592,18 @@ app.post('/api/presenca/:linkId/confirmar', async (req, res) => {
       }
 
       jogadorIdEfetivo = session.jogadorId;
+    // Prioridade 2: Token do convite individual (novo método)
+    } else if (token) {
+      const convite = await TokenPresenca.findOne({ token });
+      const now = new Date();
+
+      if (!convite || convite.expiresAt <= now) {
+        return res.status(401).json({ success: false, message: 'Convite expirado ou inválido.' });
+      }
+      // Garante que o token corresponde ao linkId da URL para segurança
+      const linkDoToken = await LinkPresenca.findById(convite.linkPresencaId);
+      if (!linkDoToken || linkDoToken.linkId !== linkId) return res.status(401).json({ success: false, message: 'Convite não pertence a este evento.' });
+      jogadorIdEfetivo = convite.jogadorId.toString();
     }
 
     const jogadorIndex = link.jogadores.findIndex(j => String(j.id || j._id) === String(jogadorIdEfetivo));

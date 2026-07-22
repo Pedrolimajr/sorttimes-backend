@@ -19,6 +19,7 @@ const { v4: uuidv4 } = require('uuid');
 const LinkPresenca = require('./models/LinkPresenca');
 const LinkPartida = require('./models/LinkPartida');
 const Partida = require('./models/Partida');
+const jwt = require('jsonwebtoken'); // Usaremos JWT para o token persistente
 
 // Controle em memória para tentativas de autenticação na confirmação de presença
 // Chave: `${ip}:${linkId}`
@@ -326,7 +327,7 @@ app.post('/api/presenca/:linkId/auth', async (req, res) => {
     const { linkId } = req.params;
 
     // 1. Busca o link para validar existência
-    const link = await LinkPresenca.findOne({ linkId });
+    const link = await LinkPresenca.findOne({ linkId: linkId });
     if (!link) return res.status(404).json({ success: false, message: 'Link expirado' });
 
     // 2. Busca o jogador DIRETAMENTE na coleção principal (Sincronização em tempo real)
@@ -362,28 +363,73 @@ app.post('/api/presenca/:linkId/auth', async (req, res) => {
     // Autenticação bem-sucedida: limpa tentativas
     presencaAttempts.delete(`${ip}:${linkId}`);
 
-    // Cria sessão temporária exclusiva para este jogador
-    const now = new Date();
-    const sessionId = uuidv4();
-    const sessionDurationMinutes = 30;
-    const expiresAt = new Date(now.getTime() + sessionDurationMinutes * 60 * 1000);
+    // Gera um token persistente que será salvo no localStorage do navegador do cliente
+    // Este token identifica o jogador em futuros acessos, de qualquer link de presença.
+    const persistentToken = jwt.sign({ id: jogador._id }, process.env.JWT_PRIVATE_KEY, { expiresIn: '365d' });
 
+    // Cria uma sessão de curta duração para a confirmação imediata
+    const sessionId = uuidv4();
     presencaSessions.set(sessionId, {
       linkId,
       jogadorId: String(jogador._id),
-      expiresAt
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000) // 30 minutos
     });
-
-    console.log(`✅ Sessão de presença criada. Jogador=${jogador.nome} Link=${linkId} IP=${ip} Expira=${expiresAt.toISOString()}`);
 
     return res.json({
       success: true,
+      persistentToken, // Envia o token para o frontend salvar
+      sessionId, // Envia a sessão para uso imediato
       jogador: {
         id: String(jogador._id),
         nome: jogador.nome,
-        presente: jogadorNoLink ? !!jogadorNoLink.presente : false,
-        foto: jogador.foto
-      },
+        foto: jogador.foto,
+        presente: !!jogadorNoLink?.presente
+      }
+    });
+  } catch (error) {
+    console.error('Erro na autenticação de presença:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao autenticar presença'
+    });
+  }
+});
+
+// POST - Autenticação "mágica" usando o token persistente
+app.post('/api/presenca/:linkId/auth-token', async (req, res) => {
+  try {
+    const { token } = req.body;
+    const { linkId } = req.params;
+
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'Token não fornecido.' });
+    }
+
+    // 1. Valida o link
+    const link = await LinkPresenca.findOne({ linkId });
+    if (!link) return res.status(404).json({ success: false, message: 'Link expirado ou inválido.' });
+
+    // 2. Valida o token JWT
+    const decoded = jwt.verify(token, process.env.JWT_PRIVATE_KEY);
+    const jogador = await Jogador.findById(decoded.id).select('nome foto ativo');
+
+    if (!jogador || jogador.ativo === false) {
+      return res.status(401).json({ success: false, message: 'Jogador não encontrado ou bloqueado.' });
+    }
+
+    // 3. Cria uma sessão de curta duração para a confirmação
+    const sessionId = uuidv4();
+    presencaSessions.set(sessionId, {
+      linkId,
+      jogadorId: String(jogador._id),
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000) // 30 minutos
+    });
+
+    const jogadorNoLink = link.jogadores.find(j => String(j.id || j._id) === String(jogador._id));
+
+    return res.json({
+      success: true,
+      jogador: { id: String(jogador._id), nome: jogador.nome, foto: jogador.foto, presente: !!jogadorNoLink?.presente },
       sessionId
     });
   } catch (error) {

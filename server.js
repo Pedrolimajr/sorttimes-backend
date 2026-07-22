@@ -287,17 +287,20 @@ app.post('/api/gerar-link-presenca', authMiddleware, async (req, res) => {
 app.post('/api/gerar-convites-individuais/:linkId', authMiddleware, async (req, res) => {
   try {
     const { linkId } = req.params;
+    const { jogadoresIds } = req.body; // Recebe a lista de IDs dos jogadores selecionados
+
+    if (!jogadoresIds || !Array.isArray(jogadoresIds) || jogadoresIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'Nenhum jogador foi selecionado.' });
+    }
+
     const linkPresenca = await LinkPresenca.findOne({ linkId });
 
     if (!linkPresenca) {
       return res.status(404).json({ success: false, message: 'Link de presença não encontrado.' });
     }
 
-    // Busca todos os jogadores ativos (não bloqueados) que possuem um número de telefone
-    const jogadores = await Jogador.find({
-      ativo: { $ne: false }, // Garante que o jogador não está bloqueado
-      telefone: { $exists: true, $ne: '' }
-    }).select('nome telefone');
+    // Busca apenas os jogadores selecionados que possuem telefone
+    const jogadores = await Jogador.find({ _id: { $in: jogadoresIds }, telefone: { $exists: true, $ne: '' } }).select('nome telefone');
 
     if (jogadores.length === 0) {
       return res.status(404).json({ success: false, message: 'Nenhum jogador ativo com telefone encontrado para enviar convites.' });

@@ -283,67 +283,6 @@ app.post('/api/gerar-link-presenca', authMiddleware, async (req, res) => {
   }
 });
 
-// POST - Gerar link de presença E convites individuais em uma única transação
-app.post('/api/gerar-convocacao-e-convites', authMiddleware, async (req, res) => {
-  try {
-    const { dataJogo, jogadoresIds } = req.body;
-
-    if (!dataJogo) {
-      return res.status(400).json({ success: false, message: 'Data do jogo é obrigatória.' });
-    }
-    if (!jogadoresIds || !Array.isArray(jogadoresIds) || jogadoresIds.length === 0) {
-      return res.status(400).json({ success: false, message: 'Nenhum jogador foi selecionado.' });
-    }
-
-    // 1. Criar o Link de Presença principal
-    const linkId = uuidv4();
-    const dataJogoDate = new Date(dataJogo);
-    const expireAt = new Date(dataJogoDate.getTime() + 15 * 60 * 60 * 1000); // Expira 15h após o jogo
-
-    const novoLink = new LinkPresenca({
-      linkId,
-      jogadores: [],
-      dataJogo: dataJogoDate,
-    });
-    novoLink.set('expireAt', expireAt, { strict: false });
-    await novoLink.save();
-
-    // 2. Gerar os tokens individuais para os jogadores selecionados
-    const jogadores = await Jogador.find({ _id: { $in: jogadoresIds }, telefone: { $exists: true, $ne: '' } }).select('nome telefone');
-
-    if (jogadores.length === 0) {
-      return res.status(404).json({ success: false, message: 'Nenhum dos jogadores selecionados possui telefone cadastrado.' });
-    }
-
-    const convites = [];
-    const frontendUrl = process.env.FRONTEND_URL || 'https://sorttimes-frontend.vercel.app';
-
-    for (const jogador of jogadores) {
-      const token = uuidv4();
-      await TokenPresenca.create({
-        token,
-        linkPresencaId: novoLink._id,
-        jogadorId: jogador._id,
-        expiresAt: expireAt,
-      });
-
-      const mensagem = encodeURIComponent(
-        `Olá, ${jogador.nome}! Confirme sua presença para o jogo do dia ${new Date(novoLink.dataJogo).toLocaleDateString('pt-BR')}. Acesse o link: ${frontendUrl}/presenca/confirmar/${token}`
-      );
-      const numeroLimpo = jogador.telefone.replace(/\D/g, '');
-      convites.push({
-        nome: jogador.nome,
-        whatsappUrl: `https://wa.me/55${numeroLimpo}?text=${mensagem}`
-      });
-    }
-
-    return res.status(201).json({ success: true, convites, linkId: novoLink.linkId });
-  } catch (error) {
-    console.error('Erro ao gerar convocação e convites:', error);
-    return res.status(500).json({ success: false, message: 'Erro interno ao gerar convites.' });
-  }
-});
-
 // POST - Gerar convites individuais por WhatsApp (admin / autenticado)
 app.post('/api/gerar-convites-individuais/:linkId', authMiddleware, async (req, res) => {
   try {

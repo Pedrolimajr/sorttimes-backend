@@ -330,15 +330,16 @@ app.post('/api/presenca/:linkId/auth', async (req, res) => {
     const link = await LinkPresenca.findOne({ linkId: linkId });
     if (!link) return res.status(404).json({ success: false, message: 'Link expirado' });
 
-    // 2. Busca o jogador DIRETAMENTE na coleção principal (Sincronização em tempo real)
+    // 2. Busca o jogador pelo nome, incluindo os inativos para diferenciar o erro.
     const escapedNome = nome.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const jogadores = await Jogador.find({ 
       nome: { $regex: new RegExp(escapedNome, 'i') },
       nivel: { $in: ['Associado', 'Convidado'] },
-      ativo: { $ne: false }
     });
 
-    if (jogadores.length === 0) return res.status(401).json({ success: false, message: 'Jogador não encontrado ou inativo.' });
+    if (jogadores.length === 0) {
+      return res.status(401).json({ success: false, message: 'Usuário ou senha inválidos' });
+    }
 
     // 3. Valida a senha (Data de Nascimento)
     const jogador = jogadores.find(j => {
@@ -350,11 +351,13 @@ app.post('/api/presenca/:linkId/auth', async (req, res) => {
       return password === `${dd}${mm}${yyyy}`;
     });
 
-    if (!jogador || !jogador.dataNascimento) {
-      return res.status(401).json({
-        success: false,
-        message: 'Não foi possível autenticar com os dados informados.'
-      });
+    if (!jogador) {
+      return res.status(401).json({ success: false, message: 'Usuário ou senha inválidos' });
+    }
+
+    // 4. Verifica se o jogador está bloqueado APÓS a autenticação
+    if (jogador.ativo === false) {
+      return res.status(403).json({ success: false, message: 'Usuário bloqueado. Contate o administrador.' });
     }
 
     // Verifica se já está presente no LinkPresenca

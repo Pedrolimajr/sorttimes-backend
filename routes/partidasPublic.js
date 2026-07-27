@@ -5,6 +5,7 @@ const LinkPartida = require('../models/LinkPartida');
 const Partida = require('../models/Partida');
 const Jogador = require('../models/Jogador');
 const auth = require('../middleware/auth');
+const jwt = require('jsonwebtoken');
 
 // Gerar link público (Apenas Admin)
 router.post('/gerar-link/:partidaId', auth, async (req, res) => {
@@ -305,17 +306,57 @@ router.post('/:linkId/auth-jogador', async (req, res) => {
 
     const jaVotou = partida.jogadoresQueVotaram.includes(jogador._id);
 
+    // Gera um token persistente para login automático futuro
+    const persistentToken = jwt.sign({ id: jogador._id }, process.env.JWT_PRIVATE_KEY, { expiresIn: '365d' });
+
     res.json({ 
       success: true,
       // Retorna o partidaId para o frontend, útil para o admin
       partidaId: link.partidaId, 
       // Retorna o jogador para o frontend, para exibir o nome e usar o ID
       // no registro do voto
+      persistentToken, // Envia o token para o frontend salvar
       jogador: { id: jogador._id, nome: jogador.nome },
       jaVotou 
     });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Erro na autenticação.' });
+  }
+});
+
+// Autenticação automática via token persistente
+router.post('/:linkId/auth-token', async (req, res) => {
+  try {
+    const { token } = req.body;
+    const { linkId } = req.params;
+
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'Token não fornecido.' });
+    }
+
+    // 1. Valida o link
+    const link = await LinkPartida.findOne({ linkId });
+    if (!link) return res.status(404).json({ success: false, message: 'Link expirado ou inválido.' });
+
+    // 2. Valida o token JWT
+    const decoded = jwt.verify(token, process.env.JWT_PRIVATE_KEY);
+    const jogador = await Jogador.findById(decoded.id).select('nome ativo');
+
+    if (!jogador || jogador.ativo === false) {
+      return res.status(401).json({ success: false, message: 'Jogador não encontrado ou bloqueado.' });
+    }
+
+    // 3. Verifica se o jogador já votou
+    const partida = await Partida.findById(link.partidaId);
+    const jaVotou = partida.jogadoresQueVotaram.includes(jogador._id);
+
+    return res.json({
+      success: true,
+      jogador: { id: String(jogador._id), nome: jogador.nome },
+      jaVotou
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Token inválido ou expirado.' });
   }
 });
 

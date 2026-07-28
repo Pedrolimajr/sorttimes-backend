@@ -161,12 +161,21 @@ const validateObjectId = (req, res, next) => {
   next();
 };
 
+// Middleware para validar ObjectId de partida
+const validatePartidaId = (req, res, next) => {
+  if (!req.params.partidaId || !req.params.partidaId.match(/^[0-9a-fA-F]{24}$/)) {
+    return res.status(400).json({ success: false, message: 'ID de partida inválido' });
+  }
+  next();
+};
+
 // Todas as rotas abaixo exigem autenticação
 router.use(auth);
 
 // Rota GET /api/sorteio-times/historico - Retorna os últimos 5 sorteios
 router.get('/historico', async (req, res) => {
   try {
+    // Apenas os 5 mais recentes para não sobrecarregar
     const historico = await Sorteio.find()
       .sort({ data: -1 })
       .limit(5);
@@ -176,8 +185,8 @@ router.get('/historico', async (req, res) => {
   }
 });
 
-// Rota GET /api/sorteio-times/por-partida/:partidaId - Busca um sorteio pelo ID da partida vinculada
-router.get('/por-partida/:partidaId', async (req, res) => {
+// Rota GET /api/sorteio-times/por-partida/:partidaId - Busca um sorteio pelo ID da partida
+router.get('/por-partida/:partidaId', validatePartidaId, async (req, res) => {
   try {
     const { partidaId } = req.params;
     // Busca o sorteio mais recente para essa partida, caso haja mais de um por algum erro.

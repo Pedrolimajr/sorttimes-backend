@@ -176,6 +176,22 @@ router.get('/historico', async (req, res) => {
   }
 });
 
+// Rota GET /api/sorteio-times/historico/por-partida/:partidaId - Busca o sorteio mais recente de uma partida
+router.get('/historico/por-partida/:partidaId', validateObjectId, async (req, res) => {
+  try {
+    const { partidaId } = req.params;
+    // Busca o sorteio mais recente que tem o partidaId correspondente
+    const sorteio = await Sorteio.findOne({ partidaId }).sort({ data: -1 });
+
+    if (!sorteio) {
+      return res.status(404).json({ success: false, message: 'Nenhum sorteio encontrado para esta partida.' });
+    }
+    res.json({ success: true, data: sorteio });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erro ao buscar sorteio da partida.' });
+  }
+});
+
 // Rota POST /api/sorteio-times/historico - Salva um novo sorteio
 router.post('/historico', async (req, res) => {
   try {

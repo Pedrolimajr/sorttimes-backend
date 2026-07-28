@@ -198,14 +198,14 @@ router.get('/historico/por-partida/:partidaId', validateObjectId, async (req, re
 // Rota POST /api/sorteio-times/historico - Salva um novo sorteio
 router.post('/historico', async (req, res) => {
   try {
-    const { times, jogadoresPresentes, balanceamento, posicaoUnica, data, partidaVinculadaId } = req.body;
+    const { times, jogadoresPresentes, balanceamento, posicaoUnica, data, partidaId } = req.body;
     const novoSorteio = new Sorteio({
       times,
       jogadoresPresentes,
       balanceamento,
       posicaoUnica,
       data: data || new Date(),
-      partidaId: partidaVinculadaId || null
+      partidaId: partidaId || null // Corrigido de partidaVinculadaId para partidaId
     });
     await novoSorteio.save();
     res.status(201).json({ success: true, data: novoSorteio });

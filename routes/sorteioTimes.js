@@ -152,10 +152,7 @@ function distribuirMisto(jogadores, quantidadeTimes, posicoesEspecificas = {}) {
 
 // Middleware para validar ObjectId
 const validateObjectId = (req, res, next) => {
-  // Verifica se o parâmetro é 'id' ou 'partidaId' e valida o que encontrar
-  const idParaValidar = req.params.id || req.params.partidaId;
-
-  if (!idParaValidar || !idParaValidar.match(/^[0-9a-fA-F]{24}$/)) {
+  if (!req.params.id || !req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
     return res.status(400).json({ 
       success: false,
       message: 'ID inválido'
@@ -179,33 +176,17 @@ router.get('/historico', async (req, res) => {
   }
 });
 
-// Rota GET /api/sorteio-times/historico/por-partida/:partidaId - Busca o sorteio mais recente de uma partida
-router.get('/historico/por-partida/:partidaId', validateObjectId, async (req, res) => {
-  try {
-    const { partidaId } = req.params;
-    // Busca o sorteio mais recente que tem o partidaId correspondente
-    const sorteio = await Sorteio.findOne({ partidaId }).sort({ data: -1 });
-
-    if (!sorteio) {
-      return res.status(404).json({ success: false, message: 'Nenhum sorteio encontrado para esta partida.' });
-    }
-    res.json({ success: true, data: sorteio });
-  } catch (error) {
-    res.status(500).json({ success: false, message: 'Erro ao buscar sorteio da partida.' });
-  }
-});
-
 // Rota POST /api/sorteio-times/historico - Salva um novo sorteio
 router.post('/historico', async (req, res) => {
   try {
-    const { times, jogadoresPresentes, balanceamento, posicaoUnica, data, partidaId } = req.body;
+    const { times, jogadoresPresentes, balanceamento, posicaoUnica, data, partidaVinculadaId } = req.body;
     const novoSorteio = new Sorteio({
       times,
       jogadoresPresentes,
       balanceamento,
       posicaoUnica,
       data: data || new Date(),
-      partidaId: partidaId || null // Corrigido de partidaVinculadaId para partidaId
+      partidaId: partidaVinculadaId || null
     });
     await novoSorteio.save();
     res.status(201).json({ success: true, data: novoSorteio });

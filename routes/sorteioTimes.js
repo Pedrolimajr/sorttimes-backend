@@ -152,7 +152,10 @@ function distribuirMisto(jogadores, quantidadeTimes, posicoesEspecificas = {}) {
 
 // Middleware para validar ObjectId
 const validateObjectId = (req, res, next) => {
-  if (!req.params.id || !req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+  // Verifica se o parâmetro é 'id' ou 'partidaId' e valida o que encontrar
+  const idParaValidar = req.params.id || req.params.partidaId;
+
+  if (!idParaValidar || !idParaValidar.match(/^[0-9a-fA-F]{24}$/)) {
     return res.status(400).json({ 
       success: false,
       message: 'ID inválido'
